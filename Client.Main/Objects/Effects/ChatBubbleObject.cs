@@ -21,10 +21,11 @@ namespace Client.Main.Objects.Effects
         private const int PixelGap = 8;
         private const int MaxBubbleWidth = 200;
 
-        private readonly string _text;
+        private string _text;
         private readonly string _playerName;
         private readonly ushort _targetId;
-        private readonly float _lifetime;
+        private float _lifetime;
+        private float _originalLifetime;
 
         private LabelControl _nameLabel;
         private LabelControl _textLabel;
@@ -44,6 +45,7 @@ namespace Client.Main.Objects.Effects
             _playerName = playerName ?? string.Empty;
             _targetId = targetId;
             _lifetime = lifetime;
+            _originalLifetime = lifetime;
 
             IsTransparent = true;
             AffectedByTransparency = false;
@@ -152,6 +154,9 @@ namespace Client.Main.Objects.Effects
                 return;
             }
 
+            // Convert screen coordinates to virtual coordinates for UI system
+            var virtualPos = UiScaler.ToVirtual(new Point((int)screen.X, (int)screen.Y));
+
             Vector2 nameSize = MeasureLabelSize(_nameLabel);
             Vector2 textSize = MeasureLabelSize(_textLabel);
 
@@ -172,10 +177,10 @@ namespace Client.Main.Objects.Effects
 
             int bubbleHeight = nameHeight + textHeight;
 
-            int bubbleX = (int)(screen.X - maxWidth / 2f);
+            int bubbleX = (int)(virtualPos.X - maxWidth / 2f);
 
             _nameLabel.X = bubbleX;
-            _nameLabel.Y = (int)(screen.Y - bubbleHeight - PixelGap);
+            _nameLabel.Y = (int)(virtualPos.Y - bubbleHeight - PixelGap);
 
             _textLabel.X = bubbleX;
             _textLabel.Y = _nameLabel.Y + nameHeight;
@@ -244,6 +249,21 @@ namespace Client.Main.Objects.Effects
 
             return sb.ToString();
         }
+
+        public void AppendMessage(string newMessage)
+        {
+            if (string.IsNullOrEmpty(newMessage)) return;
+            
+            _text = newMessage + "\n" + _text;
+            _lifetime = _elapsed + _originalLifetime;
+            
+            if (_textLabel != null)
+            {
+                _textLabel.Text = WrapText(_text, _textLabel.FontSize, MaxBubbleWidth);
+            }
+        }
+
+        public ushort TargetId => _targetId;
 
         public override void Dispose()
         {

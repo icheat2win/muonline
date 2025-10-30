@@ -5,7 +5,7 @@ using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Client.Main.Objects.Monsters
+namespace Client.Main.Objects
 {
     public abstract class MonsterObject : WalkerObject
     {
@@ -13,14 +13,19 @@ namespace Client.Main.Objects.Monsters
         private int _lastActionForIdleSound = -1;
         private bool _isFading = false;
         private float _fadeTimer = 0f;
-        private float _fadeDuration = 2f;
+        private float _fadeDuration = 3.5f; // longer fade for smoother disappearance
         private float _startZ;
-        private const float SinkDistance = 20f;
+        private const float SinkBelowGround = 30f; // how deep to sink below terrain surface
 
         /// <summary>
         /// Determines whether a blood stain should be spawned when the monster dies.
         /// </summary>
         public bool Blood { get; set; } = true;
+
+        /// <summary>
+        /// Set of mesh indices that should NOT use blending (equivalent to NoneBlendMesh = true in original code).
+        /// </summary>
+        public HashSet<int> NoneBlendMeshes { get; set; } = new HashSet<int>();
 
         /// <summary>
         /// Gets the monster's display name defined by <see cref="NpcInfoAttribute"/>.
@@ -40,17 +45,18 @@ namespace Client.Main.Objects.Monsters
         public MonsterObject() : base()
         {
             Interactive = true;
-            AnimationSpeed = 4f;
+            AnimationSpeed = 6f;
         }
 
-        public void StartDeathFade(float duration = 2f)
+        public void StartDeathFade(float duration = 3.5f)
         {
             if (_isFading) return;
 
             // Ensure the monster stops moving while the death animation plays
             StopMovement();
+            Interactive = false; // prevent dead monsters from blocking selection
             _isFading = true;
-            _fadeDuration = duration;
+            _fadeDuration = Math.Max(1.5f, duration);
             _fadeTimer = 0f;
             _startZ = Position.Z;
 
@@ -59,10 +65,10 @@ namespace Client.Main.Objects.Monsters
                 var stain = new Effects.BloodStainEffect
                 {
                     Position = new Vector3(Position.X, Position.Y,
-                        World.Terrain.RequestTerrainHeight(Position.X, Position.Y))
+                        World.Terrain.RequestTerrainHeight(Position.X, Position.Y) + 60f)
                 };
-                World.Objects.Add(stain);
-                _ = stain.Load(); //TODO: BLOOD
+                //World.Objects.Add(stain);
+                //_ = stain.Load(); //TODO: BLOOD
             }
         }
 
@@ -77,17 +83,35 @@ namespace Client.Main.Objects.Monsters
         {
             bool wasMoving = IsMoving;
 
-            base.Update(gameTime);
-
+            // Apply fading BEFORE base.Update so buffers/shaders see updated alpha/color this frame
             if (_isFading)
             {
                 RenderShadow = false;
                 _fadeTimer += (float)gameTime.ElapsedGameTime.TotalSeconds;
-                float progress = MathHelper.Clamp(_fadeTimer / _fadeDuration, 0f, 1f);
-                Alpha = MathHelper.Lerp(1f, 0f, progress);
-                Position = new Vector3(Position.X, Position.Y, MathHelper.Lerp(_startZ, _startZ - SinkDistance, progress));
+                float p = MathHelper.Clamp(_fadeTimer / _fadeDuration, 0f, 1f);
 
-                if (progress >= 1f)
+                // Smooth fade (ease-out)
+                float alpha = 1f - p * p; // quadratic ease-out
+                Alpha = MathHelper.Clamp(alpha, 0f, 1f);
+
+                // Also darken body color for shader paths that ignore alpha
+                byte shade = (byte)(255 * Alpha);
+                Color = new Color(shade, shade, shade, (byte)255);
+                InvalidateBuffers();
+
+                // Compute terrain height to sink under ground reliably
+                float groundZ = World?.Terrain?.RequestTerrainHeight(Position.X, Position.Y) ?? _startZ;
+                float targetZ = groundZ - SinkBelowGround;
+
+                // Start sinking after a short delay for better readability
+                const float sinkStart = 0.3f; // start sinking after 30% of fade time
+                float sinkP = p <= sinkStart ? 0f : (p - sinkStart) / (1f - sinkStart);
+                // Ease-in sink for natural fall
+                float sinkEase = sinkP * sinkP;
+                float newZ = MathHelper.Lerp(_startZ, targetZ, sinkEase);
+                Position = new Vector3(Position.X, Position.Y, newZ);
+
+                if (p >= 1f)
                 {
                     _isFading = false;
                     World?.RemoveObject(this);
@@ -95,6 +119,8 @@ namespace Client.Main.Objects.Monsters
                     return;
                 }
             }
+
+            base.Update(gameTime);
 
 
             // If the monster just stopped moving
@@ -218,7 +244,7 @@ namespace Client.Main.Objects.Monsters
             foreach (var kv in map)
             {
                 int dst = kv.Key;
-                int src = kv.Value; 
+                int src = kv.Value;
                 if (src >= 0 && src < srcModel.Actions.Length)
                     actions[dst] = srcModel.Actions[src];
             }
@@ -261,6 +287,19 @@ namespace Client.Main.Objects.Monsters
             return bones;
         }
 
-        protected ILogger _logger = ModelObject.AppLoggerFactory?.CreateLogger<MonsterObject>();
+        protected new ILogger _logger = ModelObject.AppLoggerFactory?.CreateLogger<MonsterObject>();
+
+        /// <summary>
+        /// Override to support NoneBlendMeshes functionality from original code.
+        /// </summary>
+        protected override bool IsBlendMesh(int mesh)
+        {
+            // If mesh is in NoneBlendMeshes set, it should NOT use blending
+            if (NoneBlendMeshes.Contains(mesh))
+                return false;
+
+            // Otherwise use the base implementation
+            return base.IsBlendMesh(mesh);
+        }
     }
 }

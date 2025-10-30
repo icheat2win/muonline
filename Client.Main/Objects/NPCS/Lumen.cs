@@ -1,5 +1,6 @@
 using Client.Main.Content;
 using Client.Main.Controls.UI.Game;
+using Client.Main.Networking;
 using Client.Main.Objects;
 using Microsoft.Xna.Framework;
 using System.Threading.Tasks;
@@ -7,7 +8,7 @@ using System.Threading.Tasks;
 namespace Client.Main.Objects.NPCS
 {
     [NpcInfo(255, "Lumen the Barmaid")]
-    public class Lumen : CompositeNPCObject
+    public class Lumen : NPCObject
     {
         public override async Task Load()
         {
@@ -19,7 +20,11 @@ namespace Client.Main.Objects.NPCS
         }
         protected override void HandleClick()
         {
-            NpcShopControl.Instance.Visible = true;
+            var svc = MuGame.Network?.GetCharacterService();
+            if (svc != null)
+            {
+                _ = svc.SendTalkToNpcRequestAsync(NetworkId);
+            }
         }
     }
 }

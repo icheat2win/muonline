@@ -192,12 +192,28 @@ namespace Client.Main.Networking.PacketHandling.Handlers
             return Task.CompletedTask;
         }
 
+        [PacketHandler(0xF1, 0x02)]  // LogoutResponse
+        public async Task HandleLogoutResponseAsync(Memory<byte> packet)
+        {
+            try
+            {
+                var response = new LogoutResponse(packet);
+                _logger.LogInformation("Received LogoutResponse with type {Type}.", response.Type);
+                await _networkManager.ProcessLogoutResponseAsync(response.Type);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error parsing LogoutResponse packet.");
+            }
+            return;
+        }
+
         [PacketHandler(0xF3, 0x00)]  // CharacterList
         public Task HandleCharacterListAsync(Memory<byte> packet)
         {
             try
             {
-                var list = new List<(string Name, CharacterClassNumber Class, ushort Level)>();
+                var list = new List<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)>();
                 int dataSize = 0;
                 int offset = 0;
                 byte count = 0;
@@ -323,10 +339,10 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                             _logger.LogWarning("Empty appearance data for {Name}. Defaulting to DarkWizard.", name);
                         }
 
-                        list.Add((name, cls, level));
+                        list.Add((name, cls, level, appearance.ToArray()));
                         _logger.LogDebug(
-                            "Added character: {Name}, Class={Class}, Level={Level}",
-                            name, cls, level);
+                            "Added character: {Name}, Class={Class}, Level={Level}, AppearanceBytes={Bytes}",
+                            name, cls, level, appearance.Length);
                     }
                     catch (Exception ex)
                     {

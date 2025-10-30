@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Client.Main.Objects.NPCS
 {
     [NpcInfo(249, "Berdysh Guard")]
-    public class BerdyshGuard : CompositeNPCObject
+    public class BerdyshGuard : NPCObject
     {
         private WeaponObject _rightHandWeapon;
 
@@ -27,7 +27,7 @@ namespace Client.Main.Objects.NPCS
             var item = ItemDatabase.GetItemDefinition(3, 7); // Berdysh
             _rightHandWeapon.Model = await BMDLoader.Instance.Prepare(item.TexturePath);
             await base.Load();
-            CurrentAction = (int)PlayerAction.StopMale;
+            CurrentAction = (int)PlayerAction.PlayerStopMale;
         }
         protected override void HandleClick() { }
     }

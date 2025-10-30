@@ -47,7 +47,7 @@ namespace Client.Main.Objects.Effects
 
             // Generate initial bubbles
             for (int i = 0; i < MAX_BUBBLES; i++)
-                _bubbles[i] = CreateBubble();
+                _bubbles[i] = CreateBubble(randomizeLife: true);
 
             await base.Load();
         }
@@ -62,14 +62,7 @@ namespace Client.Main.Objects.Effects
                 var b = _bubbles[i];
                 b.Life += dt;
 
-                // Update vertical position (rising effect)
-                b.Position.Z = b.BasePosition.Z + b.Speed * b.Life;
-
-                // Add horizontal oscillation on X axis using sine function
-                b.Position.X = b.BasePosition.X + b.SwayAmplitude * (float)Math.Sin(b.Life * b.SwayFrequency + b.SwayPhase);
-
-                // Optionally, you can add oscillation on Y as well:
-                // b.Position.Y = b.BasePosition.Y + b.SwayAmplitude * (float)Math.Cos(b.Life * b.SwayFrequency + b.SwayPhase);
+                SyncBubbleTransform(ref b);
 
                 // If bubble's lifetime is over, reset it
                 if (b.Life >= b.MaxLife)
@@ -90,23 +83,32 @@ namespace Client.Main.Objects.Effects
             if (_bubbleTexture == null)
                 return;
 
+            // Don't render bubbles in normal Draw pass
+            DrawBoundingBox2D();
+            base.Draw(gameTime);
+        }
+
+        public override void DrawAfter(GameTime gameTime)
+        {
+            if (_bubbleTexture == null)
+                return;
+
             var sb = GraphicsManager.Instance.Sprite;
 
+            // Render bubbles with depth write enabled so they can occlude other objects
             using (new SpriteBatchScope(
                        sb,
-                       SpriteSortMode.BackToFront,
+                       SpriteSortMode.Immediate,
                        BlendState.AlphaBlend,
                        SamplerState.LinearClamp,
-                       DepthStencilState.DepthRead,
+                       DepthStencilState.Default,
                        RasterizerState.CullNone))
             {
                 for (int i = 0; i < _bubbles.Length; i++)
                     DrawBubbleBillboard(_bubbles[i]);
             }
 
-            DrawBoundingBox2D();
-
-            base.Draw(gameTime);
+            base.DrawAfter(gameTime);
         }
 
         private new void DrawBoundingBox2D()
@@ -143,6 +145,9 @@ namespace Client.Main.Objects.Effects
                 Camera.Instance.View,
                 Matrix.Identity
             );
+
+            // Projected coordinates are already in the correct space
+
             Vector2 baseTextPos = new Vector2(proj.X - textSize.X / 2, proj.Y);
 
             // Save prior GPU states
@@ -213,10 +218,11 @@ namespace Client.Main.Objects.Effects
             if (screenPos.Z < 0f || screenPos.Z > 1f)
                 return;
 
-            float scale = bubble.Size;
+            // Apply render scale to bubble size only (keep original positioning)
+            float scale = (bubble.Size / _bubbleTexture.Width) * Constants.RENDER_SCALE;
             var spriteBatch = GraphicsManager.Instance.Sprite;
 
-            // Pass screenPos.Z as layerDepth. (0 = front, 1 = back)
+            // Use actual depth from projection for proper depth testing
             spriteBatch.Draw(
                 _bubbleTexture,
                 new Vector2(screenPos.X, screenPos.Y),
@@ -224,13 +230,21 @@ namespace Client.Main.Objects.Effects
                 Color.White,
                 0f,
                 new Vector2(_bubbleTexture.Width / 2f, _bubbleTexture.Height / 2f),
-                scale / _bubbleTexture.Width,
+                scale,
                 SpriteEffects.None,
-                screenPos.Z
+                screenPos.Z  // Use actual projected depth
             );
         }
 
-        private Bubble CreateBubble()
+        private static void SyncBubbleTransform(ref Bubble bubble)
+        {
+            // Keep a stabilized Y axis while animating X/Z offsets
+            bubble.Position.Y = bubble.BasePosition.Y;
+            bubble.Position.Z = bubble.BasePosition.Z + bubble.Speed * bubble.Life;
+            bubble.Position.X = bubble.BasePosition.X + bubble.SwayAmplitude * (float)Math.Sin(bubble.Life * bubble.SwayFrequency + bubble.SwayPhase);
+        }
+
+        private Bubble CreateBubble(bool randomizeLife = false)
         {
             Bubble b = new Bubble();
             float range = 100f; // Area in which bubbles can spawn
@@ -244,13 +258,15 @@ namespace Client.Main.Objects.Effects
 
             b.Speed = MathHelper.Lerp(MIN_SPEED, MAX_SPEED, (float)_rnd.NextDouble());
             b.Size = MathHelper.Lerp(MIN_SIZE, MAX_SIZE, (float)_rnd.NextDouble());
-            b.Life = 0f;
             b.MaxLife = MathHelper.Lerp(MIN_LIFE, MAX_LIFE, (float)_rnd.NextDouble());
+            b.Life = randomizeLife ? (float)_rnd.NextDouble() * b.MaxLife : 0f;
 
             // Set random oscillation parameters
             b.SwayAmplitude = MathHelper.Lerp(5f, 20f, (float)_rnd.NextDouble());
             b.SwayFrequency = MathHelper.Lerp(1f, 2f, (float)_rnd.NextDouble());
             b.SwayPhase = (float)_rnd.NextDouble() * MathHelper.TwoPi;
+
+            SyncBubbleTransform(ref b);
 
             return b;
         }

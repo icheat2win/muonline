@@ -46,16 +46,21 @@ namespace Client.Main.Networking
 
         private ClientConnectionState _currentState = ClientConnectionState.Initial;
         private List<ServerInfo> _serverList = new();
+        private List<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)> _lastCharacterList;
         private CancellationTokenSource _managerCts;
+
+        private string _currentHost = string.Empty; // Host of current connection
+        private int _currentPort; // Port of current connection
 
         // Events
         public event EventHandler<ClientConnectionState> ConnectionStateChanged;
         public event EventHandler<List<ServerInfo>> ServerListReceived;
         public event EventHandler<string> ErrorOccurred;
-        public event EventHandler<List<(string Name, CharacterClassNumber Class, ushort Level)>> CharacterListReceived;
+        public event EventHandler<List<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)>> CharacterListReceived;
         public event EventHandler LoginSuccess;
         public event EventHandler EnteredGame;
         public event EventHandler<LoginResponse.LoginResult> LoginFailed;
+        public event EventHandler<LogOutType> LogoutResponseReceived;
 
         // Properties
         public ClientConnectionState CurrentState => _currentState;
@@ -68,6 +73,10 @@ namespace Client.Main.Networking
         public ScopeManager GetScopeManager() => _scopeManager;
         public PartyManager GetPartyManager() => _partyManager;
         public TargetProtocolVersion TargetVersion => _packetRouter.TargetVersion;
+        public string CurrentHost => _currentHost;
+        public int CurrentPort => _currentPort;
+        public IReadOnlyList<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)> GetCachedCharacterList()
+            => _lastCharacterList is null ? Array.Empty<(string, CharacterClassNumber, ushort, byte[])>() : new List<(string, CharacterClassNumber, ushort, byte[])>(_lastCharacterList);
 
         // Constructors
         public NetworkManager(ILoggerFactory loggerFactory, MuOnlineSettings settings, CharacterState characterState, ScopeManager scopeManager)
@@ -218,6 +227,9 @@ namespace Client.Main.Networking
 
             if (await _connectionManager.ConnectAsync(_settings.ConnectServerHost, _settings.ConnectServerPort, false, cancellationToken))
             {
+                _currentHost = _settings.ConnectServerHost;
+                _currentPort = _settings.ConnectServerPort;
+
                 var csConnection = _connectionManager.Connection;
                 csConnection.PacketReceived += HandlePacketAsync;
                 csConnection.Disconnected += HandleDisconnectAsync;
@@ -334,6 +346,12 @@ namespace Client.Main.Networking
                 try
                 {
                     var game = MuGame.Instance;
+                    // Avoid racing with SelectCharacterScene which will switch to GameScene
+                    if (game?.ActiveScene is SelectCharacterScene)
+                    {
+                        _logger.LogInformation("ProcessCharacterRespawn: Currently in SelectCharacterScene; deferring scene change to it.");
+                        return;
+                    }
                     if (game?.ActiveScene is not GameScene gs)
                     {
                         _logger.LogWarning("ProcessCharacterRespawn: ActiveScene is not GameScene. Changing scene.");
@@ -420,8 +438,17 @@ namespace Client.Main.Networking
             });
         }
 
-        internal void ProcessCharacterList(List<(string Name, CharacterClassNumber Class, ushort Level)> characters)
-        {
+        internal void ProcessCharacterList(List<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)> characters)
+        {            // If we receive a character list while in-game (e.g., returning to character selection),
+            // normalize the state back to ConnectedToGameServer so UI can select a character without rejection.
+            if (_currentState == ClientConnectionState.InGame)
+            {
+                _logger.LogInformation("ProcessCharacterList: Current state is InGame; switching to ConnectedToGameServer for character selection.");
+                UpdateState(ClientConnectionState.ConnectedToGameServer);
+            }
+            // Cache the last received list for potential fallback usage
+            try { _lastCharacterList = characters?.Select(c => (c.Name, c.Class, c.Level, c.Appearance?.ToArray() ?? Array.Empty<byte>())).ToList() ?? new(); }
+            catch { _lastCharacterList = characters ?? new(); }
             _logger.LogInformation(">>> ProcessCharacterList: Received list with {Count} characters. Raising event on UI thread...", characters?.Count ?? 0);
             MuGame.ScheduleOnMainThread(() =>
             {
@@ -481,6 +508,9 @@ namespace Client.Main.Networking
 
             if (await _connectionManager.ConnectAsync(host, (ushort)port, true, _managerCts.Token))
             {
+                _currentHost = host;
+                _currentPort = port;
+
                 var gsConnection = _connectionManager.Connection;
                 gsConnection.PacketReceived += HandlePacketAsync;
                 gsConnection.Disconnected += HandleDisconnectAsync;
@@ -532,6 +562,58 @@ namespace Client.Main.Networking
             }
         }
 
+        internal async Task ProcessLogoutResponseAsync(LogOutType type)
+        {
+            _logger.LogInformation(">>> ProcessLogoutResponse: Received logout response type {Type}", type);
+            _characterState.IsInGame = false;
+
+            switch (type)
+            {
+                case LogOutType.BackToCharacterSelection:
+                    UpdateState(ClientConnectionState.ConnectedToGameServer);
+                    try
+                    {
+                        await _characterService.RequestCharacterListAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error requesting character list after logout response.");
+                    }
+                    break;
+
+                case LogOutType.BackToServerSelection:
+                    try
+                    {
+                        await _connectionManager.DisconnectAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error while disconnecting from game server during logout to server selection.");
+                    }
+
+                    UpdateState(ClientConnectionState.Disconnected);
+                    break;
+
+                case LogOutType.CloseGame:
+                    _logger.LogInformation("Logout type CloseGame received. No additional action taken by client.");
+                    break;
+            }
+
+            MuGame.ScheduleOnMainThread(() =>
+            {
+                try
+                {
+                    LogoutResponseReceived?.Invoke(this, type);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error notifying LogoutResponseReceived subscribers.");
+                }
+            });
+
+            _logger.LogInformation("<<< ProcessLogoutResponse: Handled logout response type {Type}", type);
+        }
+
         internal void ProcessCharacterInformation()
         {
             if (_currentState != ClientConnectionState.SelectingCharacter)
@@ -559,6 +641,30 @@ namespace Client.Main.Networking
             }
             catch (Exception ex) { _logger.LogError(ex, "--- ProcessCharacterInformation: Exception during EnteredGame event invocation."); }
             _logger.LogInformation("<<< ProcessCharacterInformation: State updated and EnteredGame event raised.");
+        }
+
+        /// <summary>
+        /// Pings the current server.
+        /// </summary>
+        /// <param name="timeoutMs">The timeout for the ping in milliseconds.</param>
+        /// <returns>The round-trip time in milliseconds, or null if the ping failed or host is not set.</returns>
+        public async Task<int?> PingServerAsync(int timeoutMs = 1000)
+        {
+            if (string.IsNullOrWhiteSpace(_currentHost))
+                return null;
+
+            try
+            {
+                using var p = new System.Net.NetworkInformation.Ping();
+                var reply = await p.SendPingAsync(_currentHost, timeoutMs);
+                return reply.Status == System.Net.NetworkInformation.IPStatus.Success
+                    ? (int?)reply.RoundtripTime
+                    : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // Private Methods

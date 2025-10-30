@@ -22,6 +22,9 @@ namespace Client.Main.Controls.UI.Game.Inventory
         public int RequiredEnergy { get; set; }
         public int RequiredLevel { get; set; }
         public bool TwoHanded { get; set; }
+        public int Group { get; set; }
+        public bool IsExpensive { get; set; }
+        public bool CanSellToNpc { get; set; }
 
         // Classes which can equip this item
         public List<string> AllowedClasses { get; set; } = new();
@@ -33,6 +36,16 @@ namespace Client.Main.Controls.UI.Game.Inventory
             Width = width;
             Height = height;
             TexturePath = texturePath;
+        }
+
+        /// <summary>
+        /// Checks if this item is consumable (potions, scrolls, etc.).
+        /// </summary>
+        public bool IsConsumable()
+        {
+            // Group 14 = Potions (HP, MP, SD potions)
+            // Group 15 = Scrolls
+            return Group == 14 || Group == 15;
         }
     }
 }

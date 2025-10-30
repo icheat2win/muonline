@@ -44,7 +44,7 @@ namespace Client.Main.Helpers
             _myState = new SavedState(
                 sort,
                 blend ?? BlendState.AlphaBlend,
-                sampler ?? SamplerState.PointClamp,
+                sampler ?? Controllers.GraphicsManager.GetQualitySamplerState(),
                 depth,
                 raster,
                 effect,
@@ -64,10 +64,10 @@ namespace Client.Main.Helpers
 
             var gd = _batch.GraphicsDevice;
 
-            // 🔵 Przywróć wszystkie stany
+            // Restore all states
             gd.DepthStencilState = _prevDepth;
             gd.RasterizerState = _prevRaster;
-            gd.SamplerStates[0] = _prevSampler; // NEW
+            gd.SamplerStates[0] = _prevSampler;
 
             if (_stack.Count > 0)
                 _stack.Peek().Begin(_batch);

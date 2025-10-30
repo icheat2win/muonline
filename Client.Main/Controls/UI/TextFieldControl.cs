@@ -1,5 +1,6 @@
 ﻿using Client.Main.Content;
 using Client.Main.Controllers;
+using Client.Main.Helpers;
 using Client.Main.Models;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -9,6 +10,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 #if ANDROID
 using Client.Main.Platform.Android;
 #endif
@@ -21,7 +23,7 @@ namespace Client.Main.Controls.UI
         NineSlice
     }
 
-    public class TextFieldControl : UIControl
+    public class TextFieldControl : UIControl, IUiTexturePreloadable
     {
         private readonly StringBuilder _inputText = new();
         private double _cursorBlinkTimer;
@@ -32,6 +34,10 @@ namespace Client.Main.Controls.UI
         private const int CursorBlinkInterval = 500;
 
         private Texture2D[] _nineSlice = new Texture2D[9];
+        private static readonly string[] s_nineSliceSuffixes =
+        {
+            "01", "02", "03", "04", "05", "06", "07", "08", "09"
+        };
 
         public TextFieldSkin Skin { get; set; } = TextFieldSkin.Flat;
         public Color TextColor { get; set; } = Color.White;
@@ -63,16 +69,26 @@ namespace Client.Main.Controls.UI
             IsFocused = false;
         }
 
+        public IEnumerable<string> GetPreloadTexturePaths()
+        {
+            if (Skin != TextFieldSkin.NineSlice)
+                yield break;
+
+            for (int i = 0; i < s_nineSliceSuffixes.Length; i++)
+            {
+                yield return $"Interface/GFx/textbg{s_nineSliceSuffixes[i]}.ozd";
+            }
+        }
+
         public override async Task Load()
         {
             await base.Load();
 
             if (Skin == TextFieldSkin.NineSlice)
             {
-                var names = new[] { "01", "02", "03", "04", "05", "06", "07", "08", "09" };
-                for (int i = 0; i < 9; i++)
+                for (int i = 0; i < s_nineSliceSuffixes.Length; i++)
                 {
-                    _nineSlice[i] = await TextureLoader.Instance.PrepareAndGetTexture($"Interface/GFx/textbg{names[i]}.ozd");
+                    _nineSlice[i] = await TextureLoader.Instance.PrepareAndGetTexture($"Interface/GFx/textbg{s_nineSliceSuffixes[i]}.ozd");
                 }
             }
         }
@@ -245,14 +261,21 @@ namespace Client.Main.Controls.UI
             if (Status != GameControlStatus.Ready || !Visible)
                 return;
 
-            var spriteBatch = GraphicsManager.Instance.Sprite;
+            using (new SpriteBatchScope(
+                GraphicsManager.Instance.Sprite,
+                SpriteSortMode.Deferred,
+                BlendState.AlphaBlend,
+                transform: UiScaler.SpriteTransform))
+            {
+                var spriteBatch = GraphicsManager.Instance.Sprite;
 
-            if (Skin == TextFieldSkin.NineSlice && _nineSlice[0] != null)
-                DrawNineSliceBackground(spriteBatch);
-            else
-                DrawFlatBackground(spriteBatch);
+                if (Skin == TextFieldSkin.NineSlice && _nineSlice[0] != null)
+                    DrawNineSliceBackground(spriteBatch);
+                else
+                    DrawFlatBackground(spriteBatch);
 
-            DrawTextAndCursor(spriteBatch);
+                DrawTextAndCursor(spriteBatch);
+            }
 
             base.Draw(gameTime);
         }

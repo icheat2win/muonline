@@ -6,13 +6,12 @@ using System;
 using System.Threading.Tasks;
 using System.Linq;
 using MUnique.OpenMU.Network.Packets;
-using Client.Main.Objects.Player;
 using Client.Main.Controls;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 using Client.Main.Models;
-using Client.Main.Objects.Monsters;
 using Client.Main.Objects;
+using Client.Main.Objects.Player;
 using Client.Main.Objects.Effects;
 using Client.Main.Core.Client;
 using Client.Main.Scenes;
@@ -120,7 +119,7 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 {
                     if (masked != _characterState.Id) // Don't spawn self as a remote player
                     {
-                        SpawnRemotePlayerIntoWorld(w, masked, raw, c.CurrentPositionX, c.CurrentPositionY, c.Name, cls);
+                        SpawnRemotePlayerIntoWorld(w, masked, raw, c.CurrentPositionX, c.CurrentPositionY, c.Name, cls, c.Appearance.ToArray());
                     }
                 }
                 else if (masked != _characterState.Id)
@@ -129,7 +128,7 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                     {
                         if (!_pendingPlayers.Any(p => p.Id == masked))
                         {
-                            _pendingPlayers.Add(new PlayerScopeObject(masked, raw, c.CurrentPositionX, c.CurrentPositionY, c.Name, cls));
+                            _pendingPlayers.Add(new PlayerScopeObject(masked, raw, c.CurrentPositionX, c.CurrentPositionY, c.Name, cls, c.Appearance.ToArray()));
                         }
                     }
                 }
@@ -157,42 +156,105 @@ namespace Client.Main.Networking.PacketHandling.Handlers
             };
         }
 
-        private static void SpawnRemotePlayerIntoWorld(
-                   WalkableWorldControl world,
-                   ushort maskedId,
-                   ushort rawId,
-                   byte x,
-                   byte y,
-                   string name,
-                   CharacterClassNumber cls)
+        private void SpawnRemotePlayerIntoWorld(
+                WalkableWorldControl world,
+                ushort maskedId,
+                ushort rawId,
+                byte x,
+                byte y,
+                string name,
+                CharacterClassNumber cls,
+                ReadOnlyMemory<byte> appearanceData)
         {
-            MuGame.ScheduleOnMainThread(async () =>
+            _logger.LogDebug($"[Spawn] Received request for {name} ({maskedId:X4}).");
+
+            // Process player spawning asynchronously without blocking
+            _ = Task.Run(async () =>
             {
+                try
+                {
+                    await ProcessPlayerSpawnAsync(world, maskedId, rawId, x, y, name, cls, appearanceData);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"[Spawn] Error processing player spawn for {name} ({maskedId:X4}).");
+                }
+            });
+        }
+
+        private async Task ProcessPlayerSpawnAsync(
+                WalkableWorldControl world,
+                ushort maskedId,
+                ushort rawId,
+                byte x,
+                byte y,
+                string name,
+                CharacterClassNumber cls,
+                ReadOnlyMemory<byte> appearanceData)
+        {
+            _logger.LogDebug($"[Spawn] Starting creation for {name} ({maskedId:X4}).");
+
+            if (MuGame.Instance.ActiveScene?.World != world || world.Status != GameControlStatus.Ready)
+            {
+                _logger.LogWarning($"[Spawn] World changed or not ready. Aborting spawn for {name}.");
+                return;
+            }
+
+            var p = new PlayerObject(new AppearanceData(appearanceData))
+            {
+                NetworkId = maskedId,
+                CharacterClass = cls,
+                Name = name,
+                Location = new Vector2(x, y),
+                World = world
+            };
+            _logger.LogDebug($"[Spawn] PlayerObject created for {name}.");
+
+            // Load assets in background
+            try
+            {
+                await p.Load();
+                _logger.LogDebug($"[Spawn] p.Load() completed for {name}.");
+                // Skip preloading to avoid blocking
+                _logger.LogDebug($"[Spawn] Skipping preloading for {name}.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Spawn] Error loading assets for {name} ({maskedId:X4}).");
+                p.Dispose();
+                return;
+            }
+
+            // Add to world on main thread
+            MuGame.ScheduleOnMainThread(() =>
+            {
+                // Double-check world is still valid
                 if (MuGame.Instance.ActiveScene?.World != world || world.Status != GameControlStatus.Ready)
                 {
+                    _logger.LogWarning($"[Spawn] World changed or not ready during spawn. Aborting spawn for {name}.");
+                    p.Dispose();
                     return;
                 }
 
                 if (world.WalkerObjectsById.TryGetValue(maskedId, out WalkerObject existingWalker))
                 {
-                    // GameScene._logger.LogWarning($"SpawnRemotePlayer: Stale PlayerObject {maskedId:X4} found. Removing before adding new.");
+                    _logger.LogWarning($"[Spawn] Stale object for {name} found. Removing before adding new.");
                     world.Objects.Remove(existingWalker);
-                    existingWalker.Dispose();
+                    // Dispose asynchronously to avoid blocking
+                    _ = Task.Run(() => existingWalker.Dispose());
                 }
 
-                if (world.Objects.OfType<PlayerObject>().Any(p => p.NetworkId == maskedId))
-                    return;
-
-                var p = new PlayerObject
+                if (world.Objects.OfType<PlayerObject>().FirstOrDefault(pl => pl.NetworkId == maskedId) != null)
                 {
-                    NetworkId = maskedId,
-                    CharacterClass = cls,
-                    Name = name,
-                    Location = new Vector2(x, y)
-                };
+                    _logger.LogWarning($"[Spawn] PlayerObject for {name} already exists. Aborting.");
+                    p.Dispose();
+                    return;
+                }
 
                 world.Objects.Add(p);
+                _logger.LogDebug($"[Spawn] Added {name} to world.Objects.");
 
+                // Set final position
                 if (p.World != null && p.World.Terrain != null)
                 {
                     p.MoveTargetPosition = p.TargetPosition;
@@ -205,27 +267,25 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                     p.MoveTargetPosition = new Vector3(worldX, worldY, 0);
                     p.Position = p.MoveTargetPosition;
                 }
-
-                await p.Load();
-                await p.PreloadTexturesAsync();
+                _logger.LogInformation($"[Spawn] Successfully spawned {name} ({maskedId:X4}) into world.");
             });
         }
 
         [PacketHandler(0x13, PacketRouter.NoSubCode)] // AddNpcToScope
         public Task HandleAddNpcToScopeAsync(Memory<byte> packet)
         {
-            _ = Task.Run(() => ParseAndAddNpcsToScopeWithStaggering(packet.ToArray()));
+            _ = ParseAndAddNpcsToScopeWithStaggeringAsync(packet.ToArray());
             return Task.CompletedTask;
         }
 
         [PacketHandler(0x16, PacketRouter.NoSubCode)] // AddMonstersToScope
         public Task HandleAddMonstersToScopeAsync(Memory<byte> packet)
         {
-            _ = Task.Run(() => ParseAndAddNpcsToScopeWithStaggering(packet.ToArray()));
+            _ = ParseAndAddNpcsToScopeWithStaggeringAsync(packet.ToArray());
             return Task.CompletedTask;
         }
 
-        private void ParseAndAddNpcsToScopeWithStaggering(byte[] packetData)
+        private async Task ParseAndAddNpcsToScopeWithStaggeringAsync(byte[] packetData)
         {
             Memory<byte> packet = packetData;
             int npcCount = 0, firstOffset = 0, dataSize = 0;
@@ -261,7 +321,9 @@ namespace Client.Main.Networking.PacketHandling.Handlers
 
             _logger.LogInformation("ScopeHandler: AddNpcToScope received {Count} objects.", npcCount);
 
+            var spawnTasks = new List<Task>();
             int currentPacketOffset = firstOffset;
+
             for (int i = 0; i < npcCount; i++)
             {
                 if (currentPacketOffset + dataSize > packet.Length)
@@ -278,88 +340,267 @@ namespace Client.Main.Networking.PacketHandling.Handlers
 
                 _scopeManager.AddOrUpdateNpcInScope(maskedId, rawId, x, y, type, name);
 
-                MuGame.ScheduleOnMainThread(async () =>
+                // Process NPC/Monster spawning asynchronously without blocking
+                spawnTasks.Add(ProcessNpcSpawnAsync(maskedId, rawId, x, y, direction, type, name));
+
+                // Process in batches to avoid overwhelming the system
+                if (spawnTasks.Count >= 10)
                 {
-                    if (MuGame.Instance.ActiveScene?.World is WalkableWorldControl worldRef && worldRef.Status == GameControlStatus.Ready)
-                    {
-                        if (worldRef.WalkerObjectsById.TryGetValue(maskedId, out WalkerObject existingWalker))
-                        {
-                            // An object with this ID already exists in the dictionary.
-                            // This could be a stale object or a rapid respawn with ID reuse.
-                            _logger.LogWarning($"ScopeHandler: Stale/Duplicate NPC/Monster ID {maskedId:X4} ({existingWalker.GetType().Name}) found in WalkerObjectsById. Removing it before adding new {name} (Type: {type}).");
-
-                            // Remove from visual list (triggers OnObjectRemoved in WorldControl)
-                            worldRef.Objects.Remove(existingWalker);
-                            existingWalker.Dispose(); // Dispose the old instance.
-                        }
-                        // else: No existing walker with this ID in the dictionary, proceed to add.
-
-                        if (NpcDatabase.TryGetNpcType(type, out var npcClassType))
-                        {
-                            // Check again if it was added by another thread in the meantime, though less likely now with prior check
-                            if (worldRef.Objects.OfType<WalkerObject>().Any(o => o.NetworkId == maskedId)) return;
-
-                            if (Activator.CreateInstance(npcClassType) is WalkerObject obj)
-                            {
-                                obj.NetworkId = maskedId;
-                                obj.Location = new Vector2(x, y);
-                                obj.Direction = (Client.Main.Models.Direction)direction;
-
-                                worldRef.Objects.Add(obj);
-
-                                if (obj.World?.Terrain != null)
-                                {
-                                    obj.MoveTargetPosition = obj.TargetPosition;
-                                    obj.Position = obj.TargetPosition;
-                                }
-                                else
-                                {
-                                    _logger.LogError($"ScopeHandler: obj.World or obj.World.Terrain is null for NPC/Monster {maskedId} ({obj.GetType().Name}) AFTER adding to worldRef.Objects. This should not happen.");
-                                    float worldX = obj.Location.X * Constants.TERRAIN_SCALE + 0.5f * Constants.TERRAIN_SCALE;
-                                    float worldY = obj.Location.Y * Constants.TERRAIN_SCALE + 0.5f * Constants.TERRAIN_SCALE;
-                                    obj.MoveTargetPosition = new Vector3(worldX, worldY, 0);
-                                    obj.Position = obj.MoveTargetPosition;
-                                }
-
-                                try
-                                {
-                                    await obj.Load();
-                                    if (obj.Status != GameControlStatus.Ready)
-                                    {
-                                        _logger.LogWarning($"ScopeHandler: NPC/Monster {maskedId} ({obj.GetType().Name}) loaded but status is {obj.Status}.");
-                                    }
-
-                                    // Preload model textures to avoid stall on first render
-                                    if (obj is ModelObject modelObj)
-                                        await modelObj.PreloadTexturesAsync();
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, $"ScopeHandler: Error loading NPC/Monster {maskedId} ({obj.GetType().Name}).");
-                                }
-                            }
-                            else
-                            {
-                                _logger.LogWarning($"ScopeHandler: Could not create instance of NPC type {npcClassType} for TypeID {type}.");
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"ScopeHandler: NPC type not found in NpcDatabase for TypeID {type}.");
-                        }
-                    }
-                    else
-                    {
-                        lock (_pendingNpcsMonsters)
-                        {
-                            if (!_pendingNpcsMonsters.Any(p => p.Id == maskedId))
-                            {
-                                _pendingNpcsMonsters.Add(new NpcScopeObject(maskedId, rawId, x, y, type, name) { Direction = direction });
-                            }
-                        }
-                    }
-                });
+                    await Task.WhenAll(spawnTasks);
+                    spawnTasks.Clear();
+                    // Small delay to prevent overwhelming the system
+                    await Task.Delay(1);
+                }
             }
+
+            // Process remaining tasks
+            if (spawnTasks.Count > 0)
+            {
+                await Task.WhenAll(spawnTasks);
+            }
+        }
+
+        private async Task ProcessNpcSpawnAsync(ushort maskedId, ushort rawId, byte x, byte y, byte direction, ushort type, string name)
+        {
+            if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl worldRef || worldRef.Status != GameControlStatus.Ready)
+            {
+                lock (_pendingNpcsMonsters)
+                {
+                    if (!_pendingNpcsMonsters.Any(p => p.Id == maskedId))
+                    {
+                        _pendingNpcsMonsters.Add(new NpcScopeObject(maskedId, rawId, x, y, type, name) { Direction = direction });
+                    }
+                }
+                return;
+            }
+
+            if (!NpcDatabase.TryGetNpcType(type, out var npcClassType))
+            {
+                _logger.LogWarning($"ScopeHandler: NPC type not found in NpcDatabase for TypeID {type}.");
+                return;
+            }
+
+            if (!(Activator.CreateInstance(npcClassType) is WalkerObject obj))
+            {
+                _logger.LogWarning($"ScopeHandler: Could not create instance of NPC type {npcClassType} for TypeID {type}.");
+                return;
+            }
+
+            // Configure the object's properties
+            obj.NetworkId = maskedId;
+            obj.Location = new Vector2(x, y);
+            obj.Direction = (Client.Main.Models.Direction)direction;
+            obj.World = worldRef;
+
+            // Load assets in background
+            try
+            {
+                await obj.Load();
+                if (obj is ModelObject modelObj)
+                {
+                    // Skip preloading to avoid blocking
+                }
+
+                if (obj.Status != GameControlStatus.Ready)
+                {
+                    _logger.LogWarning($"ScopeHandler: NPC/Monster {maskedId} ({obj.GetType().Name}) loaded but status is {obj.Status}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"ScopeHandler: Error loading NPC/Monster {maskedId} ({obj.GetType().Name}).");
+                obj.Dispose();
+                return;
+            }
+
+            // Add to world on main thread
+            MuGame.ScheduleOnMainThread(() =>
+            {
+                // Double-check world is still valid and object doesn't already exist
+                if (MuGame.Instance.ActiveScene?.World != worldRef || worldRef.Status != GameControlStatus.Ready)
+                {
+                    obj.Dispose();
+                    return;
+                }
+
+                // Check and remove stale objects quickly
+                if (worldRef.WalkerObjectsById.TryGetValue(maskedId, out WalkerObject existingWalker))
+                {
+                    _logger.LogWarning($"ScopeHandler: Stale/Duplicate NPC/Monster ID {maskedId:X4} ({existingWalker.GetType().Name}) found in WalkerObjectsById. Removing it before adding new {name} (Type: {type}).");
+
+                    // Remove and dispose asynchronously to avoid blocking
+                    _ = Task.Run(() =>
+                    {
+                        existingWalker.Dispose();
+                    });
+                    worldRef.Objects.Remove(existingWalker);
+                }
+
+                // Quick check for duplicates using LINQ
+                var duplicate = worldRef.Objects.OfType<WalkerObject>().FirstOrDefault(o => o.NetworkId == maskedId);
+                if (duplicate != null)
+                {
+                    obj.Dispose();
+                    return;
+                }
+
+                worldRef.Objects.Add(obj);
+
+                // Set final position
+                if (obj.World?.Terrain != null)
+                {
+                    obj.MoveTargetPosition = obj.TargetPosition;
+                    obj.Position = obj.TargetPosition;
+                }
+                else
+                {
+                    _logger.LogError($"ScopeHandler: obj.World or obj.World.Terrain is null for NPC/Monster {maskedId} ({obj.GetType().Name}) AFTER loading and adding. This indicates a problem.");
+                    float worldX = obj.Location.X * Constants.TERRAIN_SCALE + 0.5f * Constants.TERRAIN_SCALE;
+                    float worldY = obj.Location.Y * Constants.TERRAIN_SCALE + 0.5f * Constants.TERRAIN_SCALE;
+                    obj.MoveTargetPosition = new Vector3(worldX, worldY, 0);
+                    obj.Position = obj.MoveTargetPosition;
+                }
+
+                // Play Appear animation for monsters that have MonsterActionType.Appear mapped
+                if (obj is MonsterObject monster && obj is ModelObject modelObj)
+                {
+                    // Check if monster has Appear animation available
+                    if (modelObj.Model?.Actions != null &&
+                        (int)MonsterActionType.Appear < modelObj.Model.Actions.Length &&
+                        modelObj.Model.Actions[(int)MonsterActionType.Appear] != null)
+                    {
+                        // Play MonsterActionType.Appear animation for dramatic spawn effect
+                        monster.PlayAction((ushort)MonsterActionType.Appear);
+                    }
+                }
+            });
+        }
+
+        [PacketHandler(0x25, PacketRouter.NoSubCode)]
+        public async Task HandleAppearanceChangedAsync(Memory<byte> packet)
+        {
+            try
+            {
+                const int EXPECTED_MIN_LENGTH = 13;
+                const byte UNEQUIP_MARKER = 0xFF;
+                const ushort ID_MASK = 0x7FFF;
+                const int OBJECT_ID_OFFSET = 3;
+                const int ITEM_GROUP_OFFSET = 5;
+                const int SLOT_AND_GLOW_OFFSET = 6;
+                const int ITEM_OPTIONS_OFFSET = 8;
+                const int EXCELLENT_FLAGS_OFFSET = 9;
+                const int ANCIENT_DISCRIMINATOR_OFFSET = 10;
+                const int ANCIENT_SET_COMPLETE_OFFSET = 11;
+                const int WEAPON_SLOT_THRESHOLD = 2;
+                const int WEAPON_GROUP = 0;
+                const int ARMOR_GROUP_OFFSET = 5;
+
+                if (packet.Length < EXPECTED_MIN_LENGTH)
+                {
+                    _logger.LogWarning("AppearanceChanged packet has invalid length: {Length}. Expected at least {Expected}.", packet.Length, EXPECTED_MIN_LENGTH);
+                        }
+
+                var span = packet.Span;
+                ushort rawKey = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(span.Slice(OBJECT_ID_OFFSET));
+                ushort maskedId = (ushort)(rawKey & ID_MASK);
+
+                bool isUnequip = span[ITEM_GROUP_OFFSET] == UNEQUIP_MARKER;
+                byte itemSlot = (byte)((span[SLOT_AND_GLOW_OFFSET] >> 4) & 0x0F);
+
+                if (isUnequip)
+                {
+                    await HandleUnequipAsync(maskedId, itemSlot);
+                    return;
+                }
+
+                byte glowLevel = (byte)(span[SLOT_AND_GLOW_OFFSET] & 0x0F);
+                byte itemGroup = itemSlot < WEAPON_SLOT_THRESHOLD ? (byte)WEAPON_GROUP : (byte)(itemSlot + ARMOR_GROUP_OFFSET);
+                byte itemNumber = (byte)(span[ITEM_GROUP_OFFSET] & 0x0F);
+                byte itemLevel = ConvertGlowToItemLevel(glowLevel);
+
+                byte itemOptions = span[ITEM_OPTIONS_OFFSET];
+                byte excellentFlags = span[EXCELLENT_FLAGS_OFFSET];
+                byte ancientDiscriminator = span[ANCIENT_DISCRIMINATOR_OFFSET];
+                bool isAncientSetComplete = span[ANCIENT_SET_COMPLETE_OFFSET] != 0;
+
+                bool hasExcellent = excellentFlags != 0;
+                bool hasAncient = ancientDiscriminator != 0 && excellentFlags != 0;
+
+                const int MAX_ITEM_INDEX = 512;
+                int finalItemType = (itemGroup * MAX_ITEM_INDEX) + itemNumber;
+
+                _logger.LogDebug("Parsed AppearanceChanged for ID {Id:X4}: Slot={Slot}, Group={Group}, Number={Number}, Type={Type}, Level={Level}",
+                    maskedId, itemSlot, itemGroup, itemNumber, finalItemType, itemLevel);
+
+                await HandleEquipAsync(maskedId, itemSlot, itemGroup, itemNumber, finalItemType, itemLevel, 
+                    itemOptions, hasExcellent ? excellentFlags : (byte)0, 
+                    hasAncient ? ancientDiscriminator : (byte)0, isAncientSetComplete);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing AppearanceChanged (0x25).");
+            }
+        }
+
+        private Task HandleUnequipAsync(ushort maskedId, byte itemSlot)
+        {
+            MuGame.ScheduleOnMainThread(async () =>
+            {
+                if (MuGame.Instance.ActiveScene?.World is not WorldControl world)
+                {
+                    _logger.LogWarning("No world available for unequip operation");
+                    return;
+                }
+
+                if (world.TryGetWalkerById(maskedId, out var walker) && walker is PlayerObject player)
+                {
+                    try
+                    {
+                        await player.UpdateEquipmentSlotAsync(itemSlot, null);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error unequipping item from slot {Slot}", itemSlot);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Player with ID {Id:X4} not found for unequip operation", maskedId);
+                }
+            });
+            return Task.CompletedTask;
+        }
+
+        private Task HandleEquipAsync(ushort maskedId, byte itemSlot, byte itemGroup, byte itemNumber, 
+            int finalItemType, byte itemLevel, byte itemOptions, byte excellentFlags, 
+            byte ancientDiscriminator, bool isAncientSetComplete)
+        {
+            MuGame.ScheduleOnMainThread(async () =>
+            {
+                if (MuGame.Instance.ActiveScene?.World is not WorldControl world) return;
+
+                if (world.TryGetWalkerById(maskedId, out var walker) && walker is PlayerObject player)
+                {
+                    var equipmentData = new EquipmentSlotData
+                    {
+                        ItemGroup = itemGroup,
+                        ItemNumber = itemNumber,
+                        ItemType = finalItemType,
+                        ItemLevel = itemLevel,
+                        ItemOptions = itemOptions,
+                        ExcellentFlags = excellentFlags,
+                        AncientDiscriminator = ancientDiscriminator,
+                        IsAncientSetComplete = isAncientSetComplete
+                    };
+
+                    await player.UpdateEquipmentSlotAsync(itemSlot, equipmentData);
+                }
+                else
+                {
+                    _logger.LogWarning("Player with ID {Id:X4} not found in scope.", maskedId);
+                }
+            });
+            return Task.CompletedTask;
         }
 
         [PacketHandler(0x11, PacketRouter.NoSubCode)] // ObjectHit / ObjectGotHit
@@ -380,11 +621,16 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 uint shieldDmg = hitInfo.ShieldDamage;
                 uint totalDmg = healthDmg + shieldDmg;
 
-                // Log damage event
+                // Get damage type information from server
+                var damageKind = hitInfo.Kind;
+                bool isDoubleDamage = hitInfo.IsDoubleDamage;
+                bool isTripleDamage = hitInfo.IsTripleDamage;
+
+                // Log damage event with type information
                 string objectName = _scopeManager.TryGetScopeObjectName(maskedId, out var nm) ? (nm ?? "Object") : "Object";
                 _logger.LogInformation(
-                    "💥 {ObjectName} (ID: {Id:X4}) received hit: HP {HpDmg}, SD {SdDmg}",
-                    objectName, maskedId, healthDmg, shieldDmg
+                    "💥 {ObjectName} (ID: {Id:X4}) received hit: HP {HpDmg}, SD {SdDmg}, Type: {DamageKind}, 2x: {IsDouble}, 3x: {IsTriple}",
+                    objectName, maskedId, healthDmg, shieldDmg, damageKind, isDoubleDamage, isTripleDamage
                 );
 
                 // Display floating damage text on the main thread
@@ -415,10 +661,53 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                     var headPos = target.WorldPosition.Translation
                                 + Vector3.UnitZ * (target.BoundingBoxWorld.Max.Z - target.WorldPosition.Translation.Z + 30f);
 
+                    // Use server-provided damage type for authentic MU Online colors
+                    Color dmgColor;
+                    string dmgText;
+
+                    if (totalDmg == 0)
+                    {
+                        dmgColor = Color.White;
+                        dmgText = "Miss";
+                    }
+                    else
+                    {
+                        // Local player damage is always red, others use server-provided damage type colors
+                        if (maskedId == _characterState.Id)
+                        {
+                            dmgColor = Color.Red;
+                        }
+                        else
+                        {
+                            // Map DamageKind to colors for other players/monsters
+                            dmgColor = damageKind switch
+                            {
+                                DamageKind.NormalRed => Color.Orange,
+                                DamageKind.IgnoreDefenseCyan => Color.Cyan,
+                                DamageKind.ExcellentLightGreen => Color.LightGreen,
+                                DamageKind.CriticalBlue => Color.DeepSkyBlue,
+                                DamageKind.LightPink => Color.LightPink,
+                                DamageKind.PoisonDarkGreen => Color.DarkGreen,
+                                DamageKind.ReflectedDarkPink => Color.DeepPink,
+                                DamageKind.White => Color.White,
+                                _ => Color.Red // fallback to normal red
+                            };
+                        }
+
+                        // Add damage multiplier indicators for double/triple damage
+                        string multiplier = "";
+                        if (isTripleDamage)
+                            multiplier = "!!!";
+                        else if (isDoubleDamage)
+                            multiplier = "!!";
+
+                        dmgText = $"{totalDmg}{multiplier}";
+                    }
+
                     var txt = new DamageTextObject(
-                        totalDmg == 0 ? "Miss" : totalDmg.ToString(),
+                        dmgText,
                         maskedId,
-                        totalDmg == 0 ? Color.White : Color.Red
+                        dmgColor
                     );
                     world.Objects.Add(txt);
                     _logger.LogDebug("Spawned DamageTextObject '{Text}' for {Id:X4}", txt.Text, maskedId);
@@ -544,26 +833,17 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                         _scopeManager.AddOrUpdateMoneyInScope(maskedId, rawId, x, y, amount);
                         _logger.LogDebug("Dropped Money: Amount={Amount}, ID={Id:X4}", amount, maskedId);
 
-                        // Schedule on main thread for visual update and sound
-                        MuGame.ScheduleOnMainThread(async () =>
+                        // Process dropped money asynchronously
+                        _ = Task.Run(async () =>
                         {
-                            if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl w) return;
-                            // Remove existing visual object if it's already there (e.g., from a previous packet re-send)
-                            var existing = w.Objects.OfType<DroppedItemObject>().FirstOrDefault(d => d.NetworkId == maskedId);
-                            if (existing != null)
+                            try
                             {
-                                w.Objects.Remove(existing);
-                                existing.Dispose();
+                                await ProcessDroppedItemAsync(dropObj, maskedId, "Sound/pDropMoney.wav");
                             }
-                            // Create and add the new visual object
-                            var obj = new DroppedItemObject(dropObj, _characterState.Id, _networkManager.GetCharacterService(), _loggerFactory.CreateLogger<DroppedItemObject>());
-                            w.Objects.Add(obj); // Add the object to the world's objects collection
-                            await obj.Load(); // Ensure its assets are loaded
-
-                            SoundController.Instance.PlayBufferWithAttenuation("Sound/pDropMoney.wav", obj.Position, w.Walker.Position); // Play money drop sound
-                            // Initial visibility check (hide if too far or out of view initially)
-                            obj.Hidden = !w.IsObjectInView(obj);
-                            _logger.LogDebug($"Spawned dropped money ({obj.DisplayName}) at {obj.Position.X},{obj.Position.Y},{obj.Position.Z}. RawId: {obj.RawId:X4}, MaskedId: {obj.NetworkId:X4}");
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, $"Error processing dropped money {maskedId:X4}");
+                            }
                         });
                     }
                     else
@@ -572,37 +852,23 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                         _scopeManager.AddOrUpdateItemInScope(maskedId, rawId, x, y, data.ToArray());
                         _logger.LogDebug("Dropped Item: ID={Id:X4}, DataLen={Len}", maskedId, data.Length);
 
-                        // Schedule on main thread for visual update and sound
-                        MuGame.ScheduleOnMainThread(async () =>
+                        // Process dropped item asynchronously
+                        _ = Task.Run(async () =>
                         {
-                            if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl w) return;
-                            // Remove existing visual object if it's already there
-                            var existing = w.Objects.OfType<DroppedItemObject>().FirstOrDefault(d => d.NetworkId == maskedId);
-                            if (existing != null)
+                            try
                             {
-                                w.Objects.Remove(existing);
-                                existing.Dispose();
+                                byte[] dataCopy = item.ItemData.ToArray();
+                                string itemName = ItemDatabase.GetItemName(dataCopy) ?? string.Empty;
+                                string soundPath = itemName.StartsWith("Jewel", StringComparison.OrdinalIgnoreCase)
+                                    ? "Sound/eGem.wav"
+                                    : "Sound/pDropItem.wav";
+
+                                await ProcessDroppedItemAsync(dropObj, maskedId, soundPath);
                             }
-
-                            // Play drop sound based on item type (Jewel vs. Generic)
-                            byte[] dataCopy = item.ItemData.ToArray(); // Create a defensive copy
-                            string itemName = ItemDatabase.GetItemName(dataCopy) ?? string.Empty;
-
-                            var obj = new DroppedItemObject(dropObj, _characterState.Id, _networkManager.GetCharacterService(), _loggerFactory.CreateLogger<DroppedItemObject>());
-                            w.Objects.Add(obj); // Add the object to the world's objects collection
-                            await obj.Load(); // Ensure its assets are loaded
-
-                            if (itemName.StartsWith("Jewel", StringComparison.OrdinalIgnoreCase))
+                            catch (Exception ex)
                             {
-                                SoundController.Instance.PlayBufferWithAttenuation("Sound/pGem.wav", obj.Position, w.Walker.Position); // Play jewel drop sound
+                                _logger.LogError(ex, $"Error processing dropped item {maskedId:X4}");
                             }
-                            else
-                            {
-                                SoundController.Instance.PlayBufferWithAttenuation("Sound/pDropItem.wav", obj.Position, w.Walker.Position); // Play generic item drop sound
-                            }
-                            // Initial visibility check
-                            obj.Hidden = !w.IsObjectInView(obj);
-                            _logger.LogDebug($"Spawned dropped item ({obj.DisplayName}) at {obj.Position.X},{obj.Position.Y},{obj.Position.Z}. RawId: {obj.RawId:X4}, MaskedId: {obj.NetworkId:X4}");
                         });
                     }
                 }
@@ -633,22 +899,17 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                         _scopeManager.AddOrUpdateMoneyInScope(maskedId, rawId, x, y, amount);
                         _logger.LogDebug("Dropped Money (0.75): Amount={Amount}, ID={Id:X4}", amount, maskedId);
 
-                        MuGame.ScheduleOnMainThread(async () =>
+                        _ = Task.Run(async () =>
                         {
-                            if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl w) return;
-                            var existing = w.Objects.OfType<DroppedItemObject>().FirstOrDefault(d => d.NetworkId == maskedId);
-                            if (existing != null)
+                            try
                             {
-                                w.Objects.Remove(existing);
-                                existing.Dispose();
+                                var newScopeObject = new MoneyScopeObject(maskedId, rawId, x, y, amount);
+                                await ProcessDroppedItemAsync(newScopeObject, maskedId, "Sound/pDropMoney.wav");
                             }
-                            var newScopeObject = new MoneyScopeObject(maskedId, rawId, x, y, amount);
-                            var obj = new DroppedItemObject(newScopeObject, _characterState.Id, _networkManager.GetCharacterService());
-                            w.Objects.Add(obj);
-                            await obj.Load();
-                            SoundController.Instance.PlayBufferWithAttenuation("Sound/pDropMoney.wav", obj.Position, w.Walker.Position); // Sound for money
-                            obj.Hidden = !w.IsObjectInView(obj);
-                            _logger.LogDebug($"Spawned dropped money (0.75) ({obj.DisplayName}) at {obj.Position.X},{obj.Position.Y},{obj.Position.Z}. RawId: {obj.RawId:X4}, MaskedId: {obj.NetworkId:X4}");
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, $"Error processing dropped money (0.75) {maskedId:X4}");
+                            }
                         });
                     }
                     else // Item identification
@@ -661,30 +922,22 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                             _scopeManager.AddOrUpdateItemInScope(maskedId, rawId, x, y, data);
                             _logger.LogDebug("Dropped Item (0.75): ID={Id:X4}, DataLen={Len}", maskedId, dataLen075);
 
-                            MuGame.ScheduleOnMainThread(async () =>
+                            _ = Task.Run(async () =>
                             {
-                                if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl w) return;
-                                var existing = w.Objects.OfType<DroppedItemObject>().FirstOrDefault(d => d.NetworkId == maskedId);
-                                if (existing != null)
+                                try
                                 {
-                                    w.Objects.Remove(existing);
-                                    existing.Dispose();
+                                    var newScopeObject = new ItemScopeObject(maskedId, rawId, x, y, data);
+                                    string itemName = ItemDatabase.GetItemName(data) ?? string.Empty;
+                                    string soundPath = itemName.StartsWith("Jewel", StringComparison.OrdinalIgnoreCase)
+                                        ? "Sound/eGem.wav"
+                                        : "Sound/pDropItem.wav";
+
+                                    await ProcessDroppedItemAsync(newScopeObject, maskedId, soundPath);
                                 }
-                                var newScopeObject = new ItemScopeObject(maskedId, rawId, x, y, data);
-                                var obj = new DroppedItemObject(newScopeObject, _characterState.Id, _networkManager.GetCharacterService());
-                                w.Objects.Add(obj);
-                                await obj.Load();
-                                string itemName = ItemDatabase.GetItemName(data) ?? string.Empty;
-                                if (itemName.StartsWith("Jewel", StringComparison.OrdinalIgnoreCase))
+                                catch (Exception ex)
                                 {
-                                    SoundController.Instance.PlayBufferWithAttenuation("Sound/pGem.wav", obj.Position, w.Walker.Position); // Sound for jewel
+                                    _logger.LogError(ex, $"Error processing dropped item (0.75) {maskedId:X4}");
                                 }
-                                else
-                                {
-                                    SoundController.Instance.PlayBufferWithAttenuation("Sound/pDropItem.wav", obj.Position, w.Walker.Position); // Sound for generic item
-                                }
-                                obj.Hidden = !w.IsObjectInView(obj);
-                                _logger.LogDebug($"Spawned dropped item (0.75) ({obj.DisplayName}) at {obj.Position.X},{obj.Position.Y},{obj.Position.Z}. RawId: {obj.RawId:X4}, MaskedId: {obj.NetworkId:X4}");
                             });
                         }
                         else
@@ -742,36 +995,48 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 _logger.LogWarning("Packet shorter than expected – adjusted removal count to {Count}.", count);
             }
 
-            for (int i = 0; i < count; i++)
+            // Process removals asynchronously
+            _ = Task.Run(() =>
             {
-                try
+                var objectsToRemove = new List<ushort>();
+
+                for (int i = 0; i < count; i++)
                 {
-                    var entry = removed[i];
-                    ushort rawId = entry.Id;
-                    ushort masked = (ushort)(rawId & 0x7FFF);
-
-                    _scopeManager.RemoveObjectFromScope(masked);
-
-                    MuGame.ScheduleOnMainThread(() =>
+                    try
                     {
-                        if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl world) return;
+                        var entry = removed[i];
+                        ushort rawId = entry.Id;
+                        ushort masked = (ushort)(rawId & 0x7FFF);
 
+                        _scopeManager.RemoveObjectFromScope(masked);
+                        objectsToRemove.Add(masked);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing dropped item removal at idx {Idx}.", i);
+                    }
+                }
+
+                // Remove objects on main thread
+                MuGame.ScheduleOnMainThread(() =>
+                {
+                    if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl world) return;
+
+                    foreach (var masked in objectsToRemove)
+                    {
                         var obj = world.Objects
                                        .OfType<DroppedItemObject>()
                                        .FirstOrDefault(d => d.NetworkId == masked);
                         if (obj != null)
                         {
                             world.Objects.Remove(obj);
-                            obj.Dispose(); // ensure label and resources are removed
+                            // Dispose asynchronously to avoid blocking
+                            _ = Task.Run(() => obj.Dispose());
                             _logger.LogDebug("Removed DroppedItemObject {Id:X4} from world (scope gone).", masked);
                         }
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error removing dropped item at idx {Idx}.", i);
-                }
-            }
+                    }
+                });
+            });
         }
 
         [PacketHandler(0x2F, PacketRouter.NoSubCode)] // MoneyDroppedExtended
@@ -807,38 +1072,61 @@ namespace Client.Main.Networking.PacketHandling.Handlers
             var outPkt = new MapObjectOutOfScope(packet);
             int count = outPkt.ObjectCount;
 
-            MuGame.ScheduleOnMainThread(() =>
+            // Process removal asynchronously to avoid blocking
+            _ = Task.Run(() =>
             {
-                if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl world) return;
-
+                var objectsToRemove = new List<ushort>();
                 for (int i = 0; i < count; i++)
                 {
                     ushort raw = outPkt[i].Id;
                     ushort masked = (ushort)(raw & 0x7FFF);
-
+                    objectsToRemove.Add(masked);
                     _scopeManager.RemoveObjectFromScope(masked);
-
-                    // ---- 1) Walker / NPC / Player -----------------------------------
-                    var walker = world.Objects
-                                      .OfType<WalkerObject>()
-                                      .FirstOrDefault(w => w.NetworkId == masked);
-                    if (walker != null)
-                    {
-                        world.Objects.Remove(walker);
-                        walker.Dispose();
-                        continue;
-                    }
-
-                    // ---- 2) Dropped item --------------------------------------------
-                    var drop = world.Objects
-                                     .OfType<DroppedItemObject>()
-                                     .FirstOrDefault(d => d.NetworkId == masked);
-                    if (drop != null)
-                    {
-                        world.Objects.Remove(drop);
-                        drop.Dispose();
-                    }
                 }
+
+                // Remove objects on main thread in batches
+                MuGame.ScheduleOnMainThread(() =>
+                {
+                    if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl world) return;
+
+                    foreach (var masked in objectsToRemove)
+                    {
+                        // ---- 1) Player --------------------------------------------------
+                        var player = world.Objects
+                                          .OfType<PlayerObject>()
+                                          .FirstOrDefault(p => p.NetworkId == masked);
+                        if (player != null)
+                        {
+                            world.Objects.Remove(player);
+                            // Dispose asynchronously to avoid blocking
+                            _ = Task.Run(() => player.Dispose());
+                            continue;
+                        }
+
+                        // ---- 2) Walker / NPC --------------------------------------------
+                        var walker = world.Objects
+                                          .OfType<WalkerObject>()
+                                          .FirstOrDefault(w => w.NetworkId == masked);
+                        if (walker != null)
+                        {
+                            world.Objects.Remove(walker);
+                            // Dispose asynchronously to avoid blocking
+                            _ = Task.Run(() => walker.Dispose());
+                            continue;
+                        }
+
+                        // ---- 3) Dropped item --------------------------------------------
+                        var drop = world.Objects
+                                         .OfType<DroppedItemObject>()
+                                         .FirstOrDefault(d => d.NetworkId == masked);
+                        if (drop != null)
+                        {
+                            world.Objects.Remove(drop);
+                            // Dispose asynchronously to avoid blocking
+                            _ = Task.Run(() => drop.Dispose());
+                        }
+                    }
+                });
             });
 
             return Task.CompletedTask;
@@ -910,6 +1198,21 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl world)
                     return;
 
+                // ────────────────────────────────────────────────
+                //  local player?  → do not override animation
+                // ────────────────────────────────────────────────
+                if (maskedId == _characterState.Id)
+                {
+
+                    var self = world.Walker;
+
+                    if (self != null && self.NetworkId == maskedId)
+                    {
+                        self.MoveTo(new Vector2(x, y), sendToServer: false);
+                        return;
+                    }
+                }
+
                 if (!world.TryGetWalkerById(maskedId, out var walker) || walker == null)
                 {
                     _logger.LogTrace("HandleObjectWalked: Walker {Id:X4} not found.", maskedId);
@@ -927,16 +1230,16 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                     {
                         var flags = world.Terrain.RequestTerrainFlag(x, y);
                         walkAction = flags.HasFlag(TWFlags.SafeZone)
-                            ? (isFemale ? PlayerAction.WalkFemale : PlayerAction.WalkMale)
-                            : PlayerAction.RunSwim;
+                            ? (isFemale ? PlayerAction.PlayerWalkFemale : PlayerAction.PlayerWalkMale)
+                            : PlayerAction.PlayerRunSwim;
                     }
                     else if (world.WorldIndex == 11 || (world.WorldIndex == 1 && player.HasEquippedWings && !world.Terrain.RequestTerrainFlag(x, y).HasFlag(TWFlags.SafeZone)))
                     {
-                        walkAction = PlayerAction.Fly;
+                        walkAction = PlayerAction.PlayerFly;
                     }
                     else
                     {
-                        walkAction = isFemale ? PlayerAction.WalkFemale : PlayerAction.WalkMale;
+                        walkAction = isFemale ? PlayerAction.PlayerWalkFemale : PlayerAction.PlayerWalkMale;
                     }
 
                     if (player.CurrentAction != walkAction)
@@ -948,11 +1251,11 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 {
                     walker.PlayAction((ushort)MonsterActionType.Walk, fromServer: true);
                 }
-                else if (walker is HumanoidObject)           // ③ Humanoid NPCs (guards, priests, etc.)
+                else if (walker is NPCObject)
                 {
-                    const PlayerAction walkAction = PlayerAction.WalkMale;
+                    const PlayerAction walkAction = PlayerAction.PlayerWalkMale;
                     if (walker.CurrentAction != (int)walkAction)
-                    walker.PlayAction((ushort)walkAction, fromServer: true);
+                        walker.PlayAction((ushort)walkAction, fromServer: true);
                 }
             });
 
@@ -1218,6 +1521,92 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 _logger.LogError(ex, "Error parsing GuildMemberLeftGuild (0x5D).");
             }
             return Task.CompletedTask;
+        }
+
+        private async Task ProcessDroppedItemAsync(ScopeObject dropObj, ushort maskedId, string soundPath)
+        {
+            // Add to world on main thread first, then load assets
+            var tcs = new TaskCompletionSource<bool>();
+
+            MuGame.ScheduleOnMainThread(() =>
+            {
+                ProcessDroppedItemOnMainThread(dropObj, maskedId, soundPath, tcs);
+            });
+
+            await tcs.Task;
+        }
+
+        private async void ProcessDroppedItemOnMainThread(ScopeObject dropObj, ushort maskedId, string soundPath, TaskCompletionSource<bool> tcs)
+        {
+            try
+            {
+                if (MuGame.Instance.ActiveScene?.World is not WalkableWorldControl world)
+                {
+                    tcs.SetResult(false);
+                    return;
+                }
+
+                // Remove existing visual object if it's already there
+                var existing = world.Objects.OfType<DroppedItemObject>().FirstOrDefault(d => d.NetworkId == maskedId);
+                if (existing != null)
+                {
+                    world.Objects.Remove(existing);
+                    // Dispose asynchronously to avoid blocking
+                    _ = Task.Run(() => existing.Dispose());
+                }
+
+                var obj = new DroppedItemObject(dropObj, _characterState.Id, _networkManager.GetCharacterService(), _loggerFactory.CreateLogger<DroppedItemObject>());
+
+                // Set World property before adding to world objects
+                obj.World = world;
+
+                // Add to world so World.Scene is available
+                world.Objects.Add(obj);
+
+                // Load assets
+                try
+                {
+                    await obj.Load();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error loading dropped item assets for {maskedId:X4}");
+                    world.Objects.Remove(obj);
+                    obj.Dispose();
+                    tcs.SetResult(false);
+                    return;
+                }
+
+                // Play drop sound
+                SoundController.Instance.PlayBufferWithAttenuation(soundPath, obj.Position, world.Walker.Position);
+
+                // Don't set Hidden immediately - let WorldObject.Update handle visibility checks
+                // The immediate visibility check was causing items to be Hidden incorrectly
+                _logger.LogDebug($"Spawned dropped item ({obj.DisplayName}) at {obj.Position.X},{obj.Position.Y},{obj.Position.Z}. RawId: {obj.RawId:X4}, MaskedId: {obj.NetworkId:X4}");
+
+                tcs.SetResult(true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error processing dropped item on main thread for {maskedId:X4}");
+                tcs.SetResult(false);
+            }
+        }
+
+        private static byte ConvertGlowToItemLevel(byte glowLevel)
+        {
+            return glowLevel switch
+            {
+                0 => 0,
+                1 => 3,
+                2 => 5,
+                3 => 7,
+                4 => 9,
+                5 => 11,
+                6 => 13,
+                7 => 15,
+                _ => 0
+            };
         }
     }
 }

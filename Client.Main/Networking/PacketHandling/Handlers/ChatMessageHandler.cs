@@ -24,8 +24,10 @@ namespace Client.Main.Networking.PacketHandling.Handlers
         private static readonly List<(ServerMessage.MessageType Type, string Message)> _pendingServerMessages = new();
         private static readonly object _pendingServerMessagesLock = new();
         private static readonly Regex _leadingZerosRegex = new Regex(
-            @"^0+(?=[a-zA-Z])",
+            @"^0+(?=\S)",  // Remove leading zeros followed by any non-whitespace character
             RegexOptions.Compiled);
+        private static readonly object _lastMsgLock = new();
+        private static (DateTime Time, string Text) _lastBlueSystemMessage;
 
         // ───────────────────────── Constructors ─────────────────────────
         public ChatMessageHandler(ILoggerFactory loggerFactory)
@@ -61,6 +63,15 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 _logger.LogInformation(
                     "Received ServerMessage (0x0D): Type={Type}, Original='{Original}', Cleaned='{Cleaned}'",
                     serverMsg.Type, original, cleaned);
+
+                // for contextual popups (e.g., buy failed reason), remember last BlueNormal
+                if (serverMsg.Type == ServerMessage.MessageType.BlueNormal && !string.IsNullOrWhiteSpace(cleaned))
+                {
+                    lock (_lastMsgLock)
+                    {
+                        _lastBlueSystemMessage = (DateTime.UtcNow, cleaned);
+                    }
+                }
 
                 // Queue for UI-thread processing in GameScene
                 if (serverMsg.Type != ServerMessage.MessageType.BlueNormal)
@@ -119,6 +130,8 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                         if (type == MUnique.OpenMU.Network.Packets.ServerToClient.ChatMessage.ChatMessageType.Whisper)
                         {
                             uiType = Models.MessageType.Whisper;
+                            // Play whisper sound when receiving a whisper message
+                            Controllers.SoundController.Instance.PlayBuffer("Sound/iWhisper.wav");
                         }
                         else if (rawText.StartsWith("~"))
                         {
@@ -156,8 +169,18 @@ namespace Client.Main.Networking.PacketHandling.Handlers
 
                             if (player != null)
                             {
-                                var bubble = new ChatBubbleObject(display, player.NetworkId, sender);
-                                world.Objects.Add(bubble);
+                                var existingBubble = world.Objects.OfType<ChatBubbleObject>()
+                                    .FirstOrDefault(b => b.TargetId == player.NetworkId);
+                                
+                                if (existingBubble != null)
+                                {
+                                    existingBubble.AppendMessage(display);
+                                }
+                                else
+                                {
+                                    var bubble = new ChatBubbleObject(display, player.NetworkId, sender);
+                                    world.Objects.Add(bubble);
+                                }
                             }
                         }
                     }
@@ -195,6 +218,22 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 var copy = new List<(ServerMessage.MessageType, string)>(_pendingServerMessages);
                 _pendingServerMessages.Clear();
                 return copy;
+            }
+        }
+
+        /// <summary>
+        /// Returns last BlueNormal message if it's not older than maxAgeMs. Otherwise null.
+        /// </summary>
+        public static string TryGetRecentBlueSystemMessage(int maxAgeMs = 1500)
+        {
+            lock (_lastMsgLock)
+            {
+                if (string.IsNullOrEmpty(_lastBlueSystemMessage.Text)) return null;
+                if ((DateTime.UtcNow - _lastBlueSystemMessage.Time).TotalMilliseconds <= maxAgeMs)
+                {
+                    return _lastBlueSystemMessage.Text;
+                }
+                return null;
             }
         }
     }

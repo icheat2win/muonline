@@ -79,6 +79,9 @@ namespace Client.Main.Controls
             Controls = new ChildrenCollection<GameControl>(this);
         }
 
+        protected virtual MouseState CurrentMouseState => MuGame.Instance.Mouse;
+        protected virtual MouseState PreviousMouseState => MuGame.Instance.PrevMouseState;
+
         // Public Methods
         public virtual bool OnClick()
         {
@@ -108,12 +111,11 @@ namespace Client.Main.Controls
             {
                 Status = GameControlStatus.Initializing;
 
-                var controlsArray = Controls.ToArray(); // ToArray to avoid modification issues during iteration
-                var taskList = new List<Task>(controlsArray.Length);
+                var taskList = new List<Task>(Controls.Count);
 
-                for (int i = 0; i < controlsArray.Length; i++)
+                for (int i = 0; i < Controls.Count; i++)
                 {
-                    var control = controlsArray[i];
+                    var control = Controls[i];
                     if (control.Status == GameControlStatus.NonInitialized)
                         taskList.Add(control.Initialize());
                 }
@@ -154,11 +156,13 @@ namespace Client.Main.Controls
             if (Status != GameControlStatus.Ready || !Visible) return;
 
             // Cache mouse and display rectangle to avoid repeated property lookups
-            var mouse = MuGame.Instance.Mouse;
+            var mouse = CurrentMouseState;
+            var prevMouse = PreviousMouseState;
             Rectangle rect = DisplayRectangle;
+            Point mousePosition = mouse.Position;
             IsMouseOver = Interactive &&
-                          mouse.Position.X >= rect.X && mouse.Position.X <= rect.X + rect.Width &&
-                          mouse.Position.Y >= rect.Y && mouse.Position.Y <= rect.Y + rect.Height;
+                          mousePosition.X >= rect.X && mousePosition.X <= rect.X + rect.Width &&
+                          mousePosition.Y >= rect.Y && mousePosition.Y <= rect.Y + rect.Height;
 
             // moved: Scene.MouseControl = this; 
             // MouseControl is now determined by BaseScene to ensure topmost logic.
@@ -170,7 +174,7 @@ namespace Client.Main.Controls
                     if (mouse.LeftButton == ButtonState.Pressed)
                     {
                         IsMousePressed = true; // for UI styling, indicate it's being pressed
-                        if (MuGame.Instance.PrevMouseState.LeftButton == ButtonState.Released)
+                        if (prevMouse.LeftButton == ButtonState.Released)
                         {
                             _isCurrentlyPressedByMouse = true; // this control initiated the press sequence
                             Scene?.FocusControlIfInteractive(this); // attempt to set focus
@@ -179,7 +183,7 @@ namespace Client.Main.Controls
                     else if (mouse.LeftButton == ButtonState.Released)
                     {
                         // mouse is released WHILE OVER this control
-                        if (_isCurrentlyPressedByMouse && MuGame.Instance.PrevMouseState.LeftButton == ButtonState.Pressed)
+                        if (_isCurrentlyPressedByMouse && prevMouse.LeftButton == ButtonState.Pressed)
                         {
                             // click occurred (press and release over this control)
                             if (OnClick()) // call OnClick and check if it was handled
@@ -212,9 +216,11 @@ namespace Client.Main.Controls
             }
 
             // Iterate over a copy for updating children to prevent collection modification issues
-            var childrenToUpdate = Controls.ToArray();
-            foreach (var control in childrenToUpdate)
+            // Use direct iteration with bounds checking to avoid ToArray() allocation
+            for (int i = Controls.Count - 1; i >= 0; i--)
             {
+                if (i >= Controls.Count) continue; // Skip if collection was modified
+                var control = Controls[i];
                 // If a control was disposed by a previous sibling's update in the same frame,
                 // it might still be in `childrenToUpdate` but its Status would be Disposed.
                 if (control.Status != GameControlStatus.Disposed)
@@ -226,11 +232,11 @@ namespace Client.Main.Controls
             if (AutoViewSize)
             {
                 int maxWidth = 0, maxHeight = 0;
-                // For AutoViewSize, iterate over the current Controls collection (or a fresh snapshot)
-                // as children's Update methods might have added/removed other controls.
-                var currentChildrenForLayout = Controls.ToArray();
-                foreach (var control in currentChildrenForLayout)
+                // For AutoViewSize, iterate over the current Controls collection
+                // Use for loop to avoid ToArray() allocation
+                for (int j = 0; j < Controls.Count; j++)
                 {
+                    var control = Controls[j];
                     if (control.Status == GameControlStatus.Disposed) continue; // Skip disposed controls for layout
 
                     int controlWidth = control.DisplaySize.X + control.Margin.Left;
@@ -263,17 +269,14 @@ namespace Client.Main.Controls
 
         public virtual async Task PreloadAssetsAsync()
         {
-            // Jeśli sama kontrolka jest typu TextureControl i ma zdefiniowaną ścieżkę, załaduj jej teksturę
             if (this is TextureControl tc && !string.IsNullOrEmpty(tc.TexturePath))
             {
-                // Ta metoda załaduje dane ORAZ stworzy obiekt Texture2D, umieszczając go w cache'u
                 await TextureLoader.Instance.PrepareAndGetTexture(tc.TexturePath);
             }
 
-            // Rekurencyjnie załaduj zasoby dla wszystkich dzieci
-            var childControls = Controls.ToArray(); // Kopiujemy, aby uniknąć problemów z modyfikacją kolekcji
-            foreach (var child in childControls)
+            for (int i = 0; i < Controls.Count; i++)
             {
+                var child = Controls[i];
                 await child.PreloadAssetsAsync();
             }
         }
@@ -306,11 +309,10 @@ namespace Client.Main.Controls
 
         public virtual void Dispose()
         {
-            var controlsArray = Controls.ToArray(); // Array to avoid modification issues during iteration
-
-            for (int i = 0; i < controlsArray.Length; i++)
+            // Use reverse iteration to avoid ToArray() allocation
+            for (int i = Controls.Count - 1; i >= 0; i--)
             {
-                controlsArray[i].Dispose();
+                Controls[i].Dispose();
             }
 
             Controls.Clear();

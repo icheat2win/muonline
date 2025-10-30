@@ -36,6 +36,27 @@ namespace Client.Main.Core.Client
     }
 
     /// <summary>
+    /// Represents an active buff/effect on the character.
+    /// </summary>
+    public class ActiveBuffState
+    {
+        /// <summary>
+        /// Gets or sets the effect ID (from MagicEffectStatus packet).
+        /// </summary>
+        public byte EffectId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the player ID this effect is active on.
+        /// </summary>
+        public ushort PlayerId { get; set; }
+
+        /// <summary>
+        /// Gets or sets when this effect was activated.
+        /// </summary>
+        public DateTime ActivatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>
     /// Holds the state of the currently logged-in character, including basic info, stats, inventory, and skills.
     /// This class is responsible for tracking and updating the character's attributes as received from the server.
     /// </summary>
@@ -97,6 +118,16 @@ namespace Client.Main.Core.Client
         private readonly ConcurrentDictionary<byte, byte[]> _inventoryItems = new();
         public byte InventoryExpansionState { get; set; } = 0;
         public uint InventoryZen { get; set; } = 0;
+        public event Action MoneyChanged;
+        private byte? _pendingSellSlot;
+        private byte? _pendingVaultMoveFrom;
+        private byte? _pendingVaultMoveTo;
+
+        // NPC Shop items
+        private readonly ConcurrentDictionary<byte, byte[]> _shopItems = new();
+        public event Action ShopItemsChanged;
+        private readonly ConcurrentDictionary<byte, byte[]> _vaultItems = new();
+        public event Action VaultItemsChanged;
 
         // Constants for Item Data Parsing (based on ItemSerializer.cs, Season 6 assumed)
         private const byte LuckFlagBit = 4;
@@ -122,6 +153,10 @@ namespace Client.Main.Core.Client
         // Skills
         private readonly ConcurrentDictionary<ushort, SkillEntryState> _skillList = new();
 
+        // Active Buffs/Effects
+        private readonly ConcurrentDictionary<byte, ActiveBuffState> _activeBuffs = new();
+        public event Action ActiveBuffsChanged;
+
         // --- Update Methods ---
 
         public uint CurrentHp => CurrentHealth;
@@ -145,8 +180,11 @@ namespace Client.Main.Core.Client
         public ushort TotalLeadership => (ushort)(Leadership + AddedLeadership);
 
         public event Action InventoryChanged;
+        public event Action EquipmentChanged; // Raised only when slots 0-11 change
 
         private byte[] _pendingPickedItem;
+        private byte? _pendingMoveFromSlot;
+        private byte? _pendingMoveToSlot;
 
         /// <summary>
         /// Gets the raw ID of the item currently being picked up, if any.
@@ -202,6 +240,191 @@ namespace Client.Main.Core.Client
                 _pendingPickedItem = null;
             }
         }
+
+        /// <summary>
+        /// Stashes the last requested inventory move (fromSlot -> toSlot) until the server confirms or rejects it.
+        /// </summary>
+        public void StashPendingInventoryMove(byte fromSlot, byte toSlot)
+        {
+            _pendingMoveFromSlot = fromSlot;
+            _pendingMoveToSlot = toSlot;
+            _logger.LogTrace("Stashed pending inventory move: {From} -> {To}", fromSlot, toSlot);
+        }
+
+        /// <summary>
+        /// Tries to consume the stashed inventory move. Returns true if there was one.
+        /// </summary>
+        public bool TryConsumePendingInventoryMove(out byte fromSlot, out byte toSlot)
+        {
+            if (_pendingMoveFromSlot.HasValue && _pendingMoveToSlot.HasValue)
+            {
+                fromSlot = _pendingMoveFromSlot.Value;
+                toSlot = _pendingMoveToSlot.Value;
+                _pendingMoveFromSlot = null;
+                _pendingMoveToSlot = null;
+                _logger.LogTrace("Consumed pending inventory move: {From} -> {To}", fromSlot, toSlot);
+                return true;
+            }
+
+            fromSlot = 0;
+            toSlot = 0;
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true if a pending inventory move matches the provided slots.
+        /// </summary>
+        public bool IsInventoryMovePending(byte fromSlot, byte toSlot)
+            => _pendingMoveFromSlot.HasValue && _pendingMoveToSlot.HasValue &&
+               _pendingMoveFromSlot.Value == fromSlot && _pendingMoveToSlot.Value == toSlot;
+
+        /// <summary>
+        /// Triggers the InventoryChanged event without modifying items.
+        /// Useful to force UI refresh on client-side optimistic UI fallback.
+        /// </summary>
+        public void RaiseInventoryChanged()
+        {
+            InventoryChanged?.Invoke();
+            _logger.LogTrace("InventoryChanged event raised explicitly.");
+        }
+
+        /// <summary>
+        /// Raises EquipmentChanged event.
+        /// </summary>
+        public void RaiseEquipmentChanged()
+        {
+            EquipmentChanged?.Invoke();
+            _logger.LogTrace("EquipmentChanged event raised.");
+        }
+
+        /// <summary>
+        /// Stashes the inventory slot of an item for which a sell request was sent, until the server responds.
+        /// </summary>
+        public void StashPendingSellSlot(byte slot)
+        {
+            _pendingSellSlot = slot;
+            _logger.LogTrace("Stashed pending sell for slot {Slot}", slot);
+        }
+
+        /// <summary>
+        /// Tries to consume the stashed sell slot; returns true if one was available.
+        /// </summary>
+        public bool TryConsumePendingSellSlot(out byte slot)
+        {
+            if (_pendingSellSlot.HasValue)
+            {
+                slot = _pendingSellSlot.Value;
+                _pendingSellSlot = null;
+                _logger.LogTrace("Consumed pending sell for slot {Slot}", slot);
+                return true;
+            }
+            slot = 0;
+            return false;
+        }
+
+        /// <summary>
+        /// Stashes a pending vault move (from->to). 'to' may be 0xFF when moving out to inventory.
+        /// </summary>
+        public void StashPendingVaultMove(byte fromSlot, byte toSlot)
+        {
+            _pendingVaultMoveFrom = fromSlot;
+            _pendingVaultMoveTo = toSlot;
+            _logger.LogTrace("Stashed pending vault move: {From} -> {To}", fromSlot, toSlot);
+        }
+
+        public bool TryConsumePendingVaultMove(out byte fromSlot, out byte toSlot)
+        {
+            if (_pendingVaultMoveFrom.HasValue)
+            {
+                fromSlot = _pendingVaultMoveFrom.Value;
+                toSlot = _pendingVaultMoveTo ?? (byte)0xFF;
+                _pendingVaultMoveFrom = null;
+                _pendingVaultMoveTo = null;
+                _logger.LogTrace("Consumed pending vault move: {From} -> {To}", fromSlot, toSlot);
+                return true;
+            }
+            fromSlot = 0; toSlot = 0xFF;
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true if a pending vault move matches the provided slots.
+        /// </summary>
+        public bool IsVaultMovePending(byte fromSlot, byte toSlot)
+            => _pendingVaultMoveFrom.HasValue &&
+               _pendingVaultMoveFrom.Value == fromSlot &&
+               ((_pendingVaultMoveTo.HasValue ? _pendingVaultMoveTo.Value : (byte)0xFF) == toSlot);
+
+        /// <summary>
+        /// Clears the current NPC shop items and notifies listeners.
+        /// </summary>
+        public void ClearShopItems()
+        {
+            _shopItems.Clear();
+            ShopItemsChanged?.Invoke();
+            _logger.LogTrace("ShopItemsChanged raised after ClearShopItems.");
+        }
+
+        /// <summary>
+        /// Adds or updates an item in the NPC shop list (by local shop slot).
+        /// </summary>
+        public void AddOrUpdateShopItem(byte slot, byte[] itemData)
+        {
+            _shopItems[slot] = itemData;
+        }
+
+        /// <summary>
+        /// Notifies that shop items were updated. Call after bulk updates.
+        /// </summary>
+        public void RaiseShopItemsChanged()
+        {
+            ShopItemsChanged?.Invoke();
+            _logger.LogTrace("ShopItemsChanged event raised.");
+        }
+
+        /// <summary>
+        /// Snapshot of current NPC shop items.
+        /// </summary>
+        public IReadOnlyDictionary<byte, byte[]> GetShopItems()
+        {
+            return new ReadOnlyDictionary<byte, byte[]>(_shopItems.ToDictionary(k => k.Key, v => v.Value));
+        }
+
+        /// <summary>
+        /// Vault items API.
+        /// </summary>
+        public void ClearVaultItems()
+        {
+            _vaultItems.Clear();
+            VaultItemsChanged?.Invoke();
+            _logger.LogTrace("VaultItemsChanged raised after ClearVaultItems.");
+        }
+
+        public void AddOrUpdateVaultItem(byte slot, byte[] itemData)
+        {
+            _vaultItems[slot] = itemData;
+        }
+
+        public void RemoveVaultItem(byte slot)
+        {
+            _vaultItems.TryRemove(slot, out _);
+        }
+
+        public void RaiseVaultItemsChanged()
+        {
+            VaultItemsChanged?.Invoke();
+            _logger.LogTrace("VaultItemsChanged event raised.");
+        }
+
+        public IReadOnlyDictionary<byte, byte[]> GetVaultItems()
+        {
+            return new ReadOnlyDictionary<byte, byte[]>(_vaultItems.ToDictionary(k => k.Key, v => v.Value));
+        }
+
+        /// <summary>
+        /// Checks if an item exists at the given slot in the current state.
+        /// </summary>
+        public bool HasInventoryItem(byte slot) => _inventoryItems.ContainsKey(slot);
 
         private void RaiseHealth() => HealthChanged?.Invoke(CurrentHealth, MaximumHealth);
         private void RaiseMana() => ManaChanged?.Invoke(CurrentMana, MaximumMana);
@@ -375,6 +598,7 @@ namespace Client.Main.Core.Client
         {
             InventoryZen = zen;
             _logger.LogDebug("Inventory Zen updated to: {Zen}", zen);
+            MoneyChanged?.Invoke();
         }
 
         /// <summary>
@@ -404,6 +628,10 @@ namespace Client.Main.Core.Client
         {
             _inventoryItems[slot] = itemData;
             InventoryChanged?.Invoke();
+            if (slot < 12) // equipment slots 0..11
+            {
+                EquipmentChanged?.Invoke();
+            }
             string itemName = ItemDatabase.GetItemName(itemData) ?? "Unknown Item";
             _logger.LogDebug("Inventory item added/updated at slot {Slot}: {ItemName}", slot, itemName);
         }
@@ -417,6 +645,10 @@ namespace Client.Main.Core.Client
             if (removed)
             {
                 InventoryChanged?.Invoke();
+                if (slot < 12) // equipment slots 0..11
+                {
+                    EquipmentChanged?.Invoke();
+                }
                 _logger.LogDebug("Inventory item removed from slot {Slot}", slot);
             }
             else
@@ -492,6 +724,58 @@ namespace Client.Main.Core.Client
         public IEnumerable<SkillEntryState> GetSkills()
         {
             return _skillList.Values.OrderBy(s => s.SkillId);
+        }
+
+        // --- Active Buffs/Effects Methods ---
+
+        /// <summary>
+        /// Adds or activates a buff/effect.
+        /// </summary>
+        public void ActivateBuff(byte effectId, ushort playerId)
+        {
+            _activeBuffs[effectId] = new ActiveBuffState
+            {
+                EffectId = effectId,
+                PlayerId = playerId,
+                ActivatedAt = DateTime.UtcNow
+            };
+            ActiveBuffsChanged?.Invoke();
+            _logger.LogDebug("Buff activated. Effect ID: {EffectId}, Player ID: {PlayerId}", effectId, playerId);
+        }
+
+        /// <summary>
+        /// Removes/deactivates a buff/effect.
+        /// </summary>
+        public void DeactivateBuff(byte effectId)
+        {
+            bool removed = _activeBuffs.TryRemove(effectId, out _);
+            if (removed)
+            {
+                ActiveBuffsChanged?.Invoke();
+                _logger.LogDebug("Buff deactivated. Effect ID: {EffectId}", effectId);
+            }
+            else
+            {
+                _logger.LogWarning("Attempted to deactivate buff with ID {EffectId}, but buff not found.", effectId);
+            }
+        }
+
+        /// <summary>
+        /// Gets all active buffs.
+        /// </summary>
+        public IEnumerable<ActiveBuffState> GetActiveBuffs()
+        {
+            return _activeBuffs.Values.OrderBy(b => b.ActivatedAt);
+        }
+
+        /// <summary>
+        /// Clears all active buffs.
+        /// </summary>
+        public void ClearActiveBuffs()
+        {
+            _activeBuffs.Clear();
+            ActiveBuffsChanged?.Invoke();
+            _logger.LogDebug("All active buffs cleared.");
         }
 
         // --- Display Methods ---

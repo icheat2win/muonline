@@ -1,4 +1,5 @@
-﻿using Client.Main.Controllers;
+﻿using Client.Main.Configuration;
+using Client.Main.Controllers;
 using Client.Main.Controls;
 using Client.Main.Core.Utilities;
 using Client.Main.Objects.Monsters;
@@ -11,6 +12,8 @@ namespace Client.Main.Worlds
     [WorldInfo(0, "Lorencia")]
     public class LorenciaWorld : WalkableWorldControl
     {
+        private BirdManager _birdManager;
+        private LorenciaLeafAmbientEffect _leafEffect;
 
         // Define the pub area as a rectangle
         private Rectangle pubArea = new Rectangle(12000, 12000, 900, 1500);
@@ -21,6 +24,7 @@ namespace Client.Main.Worlds
         public LorenciaWorld() : base(worldIndex: 1)
         {
             BackgroundMusicPath = "Music/MuTheme.mp3";
+            AmbientSoundPath = "Sound/aWind.wav"; // Wind ambient for open spaces
             Name = "Lorencia";
         }
 
@@ -54,7 +58,13 @@ namespace Client.Main.Worlds
             Terrain.DistortionAmplitude = 0.2f;
             Terrain.DistortionFrequency = 1.0f;
 
+            // Configure grass settings for Lorencia - normal brightness
+            Terrain.ConfigureGrass(brightness: 2.0f, textureIndices: new byte[] { 0 });
+
             SoundController.Instance.PreloadBackgroundMusic(pubMusicPath);
+
+            // Initialize bird system for outdoor areas
+            _birdManager = new BirdManager(this);
 
             base.AfterLoad();
         }
@@ -164,6 +174,9 @@ namespace Client.Main.Worlds
         {
             base.Update(time);
 
+            // Update bird system
+            _birdManager?.Update(time);
+
             // Check player's position (only X and Y are relevant)
             Vector2 playerPos = new Vector2(Walker.Position.X, Walker.Position.Y);
             // Create a Point from player's position to use with Rectangle.Contains
@@ -195,6 +208,13 @@ namespace Client.Main.Worlds
 
         public override async Task Load()
         {
+            var leafSettings = MuGame.AppSettings?.Environment?.LorenciaLeaf;
+            if (leafSettings?.Enabled != false)
+            {
+                _leafEffect = new LorenciaLeafAmbientEffect(this, leafSettings ?? new LorenciaLeafEffectSettings());
+                Objects.Add(_leafEffect);
+            }
+
             await base.Load();
 
             // Objects.Add(new Spider() { Location = new Vector2(181, 127), Direction = Models.Direction.South });
@@ -208,6 +228,22 @@ namespace Client.Main.Worlds
             // Objects.Add(new Giant() { Location = new Vector2(189, 127), Direction = Models.Direction.South });
             // Objects.Add(new Lich() { Location = new Vector2(190, 127), Direction = Models.Direction.South });
 
+        }
+
+        public override void Dispose()
+        {
+            // Clean up birds before disposing world
+            _birdManager?.Clear();
+            _birdManager = null;
+
+            if (_leafEffect != null)
+            {
+                Objects.Remove(_leafEffect);
+                _leafEffect.Dispose();
+                _leafEffect = null;
+            }
+
+            base.Dispose();
         }
     }
 }

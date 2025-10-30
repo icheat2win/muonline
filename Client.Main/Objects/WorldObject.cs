@@ -37,6 +37,45 @@ namespace Client.Main.Objects
 
         private SpriteFont _font;
         private Texture2D _whiteTexture;
+        private float _cullingCheckTimer = 0;
+        private const float CullingCheckInterval = 0.1f; // Check culling every 100ms instead of every frame
+        
+        // Advanced update optimization for invisible objects
+        private float _lowPriorityUpdateTimer = 0;
+        private const float LowPriorityUpdateInterval = 0.25f; // Update invisible objects every 250ms
+        private const float FarObjectUpdateInterval = 0.5f; // Update very far objects every 500ms
+        private float _lastDistanceToCamera = float.MaxValue;
+        private bool _wasOutOfView = true;
+        private const int MaxSkipFrames = 15; // Skip up to 15 frames for very distant objects
+        
+        // PERFORMANCE: Static bbox indices to avoid per-frame allocation
+        private static readonly int[] BoundingBoxIndices = new int[]
+        {
+            0, 1, 1, 2, 2, 3, 3, 0,
+            4, 5, 5, 6, 6, 7, 7, 4,
+            0, 4, 1, 5, 2, 6, 3, 7
+        };
+        
+        // Reusable vertices for 3D bbox (avoid per-frame allocations)
+        private readonly VertexPositionColor[] _bboxVerts = new VertexPositionColor[8];
+        
+        // Static frame counter for staggered updates
+        private static int _globalFrameCounter = 0;
+        private readonly int _updateOffset; // Unique offset for each object to stagger updates
+        
+        // Debug counters
+        public static int TotalSkippedUpdates { get; private set; } = 0;
+        public static int TotalUpdatesPerformed { get; private set; } = 0;
+        private static int _lastResetTime = Environment.TickCount;
+        
+        public static string GetOptimizationStats()
+        {
+            int total = TotalSkippedUpdates + TotalUpdatesPerformed;
+            if (total == 0) return "No updates tracked yet";
+            
+            float skipPercentage = (TotalSkippedUpdates / (float)total) * 100f;
+            return $"Updates: {TotalUpdatesPerformed}, Skipped: {TotalSkippedUpdates} ({skipPercentage:F1}%)";
+        }
 
         public bool LinkParentAnimation { get; set; }
         public bool OutOfView { get; private set; } = true;
@@ -85,6 +124,9 @@ namespace Client.Main.Objects
             Children.ControlAdded += Children_ControlAdded;
 
             _font = GraphicsManager.Instance.Font;
+            
+            // Initialize update offset for staggered updates - spread objects across frames
+            _updateOffset = GetHashCode() % 60; // Spread across ~1 second at 60fps
         }
 
         public virtual void OnClick()
@@ -152,15 +194,126 @@ namespace Client.Main.Objects
             }
             if (Status != GameControlStatus.Ready) return;
 
-            // Update OutOfView flag. The derived class will decide whether to act on it.
+            // Increment once per *frame time*, not per object update
+            _globalFrameCounter = (int)(gameTime.TotalGameTime.TotalSeconds * 60.0);
+
+            float deltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            
+            // Update OutOfView flag with intelligent frequency based on object state
+            bool shouldCheckCulling = false;
             if (World != null)
             {
-                OutOfView = !World.IsObjectInView(this);
+                _cullingCheckTimer += deltaTime;
+                
+                // Adjust culling check frequency based on object state
+                float checkInterval = _wasOutOfView ? CullingCheckInterval * 2f : CullingCheckInterval;
+                if (_cullingCheckTimer >= checkInterval)
+                {
+                    shouldCheckCulling = true;
+                }
             }
 
-            // OPTIMIZATION: Early exit if the object is not in the camera's view.
-            if (OutOfView) return;
+            if (shouldCheckCulling)
+            {
+                _cullingCheckTimer = 0;
+                _wasOutOfView = OutOfView;
+                OutOfView = World != null && !World.IsObjectInView(this);
 
+                // If object was just marked as out of view, give it another chance soon
+                if (!_wasOutOfView && OutOfView)
+                {
+                    _cullingCheckTimer = CullingCheckInterval - 0.016f; // Check again in ~1 frame
+                }
+            }
+
+            // AGGRESSIVE: Skip most updates for invisible objects
+            if (OutOfView)
+            {
+                _lowPriorityUpdateTimer += deltaTime;
+                
+                // Much more aggressive - update invisible objects only every 1 second!
+                if (_lowPriorityUpdateTimer < 1.0f && _globalFrameCounter % 60 != (_updateOffset % 60))
+                {
+                    TotalSkippedUpdates++;
+                    return; // Skip this frame entirely for invisible objects - VERY aggressive
+                }
+                
+                _lowPriorityUpdateTimer = 0;
+
+                // Only update critical children for invisible objects
+                for (int i = 0; i < Children.Count; i++)
+                {
+                    var child = Children[i];
+                    // Only update if it's a player or monster - skip everything else
+                    if (child is Player.PlayerObject || child is MonsterObject)
+                    {
+                        child.Update(gameTime);
+                    }
+                }
+                return;
+            }
+
+            // Reset low priority timer when object becomes visible
+            _lowPriorityUpdateTimer = 0;
+
+            // Simplified distance-based optimization for visible objects
+            float distanceToCamera = float.MaxValue;
+            if (World != null && Camera.Instance != null)
+            {
+                distanceToCamera = Vector3.Distance(Camera.Instance.Position, WorldPosition.Translation);
+                _lastDistanceToCamera = distanceToCamera;
+
+                // AGGRESSIVE: Skip every other frame for very distant visible objects
+                if (distanceToCamera > Constants.LOW_QUALITY_DISTANCE * 2f)
+                {
+                    if (_globalFrameCounter % 2 != (_updateOffset % 2))
+                    {
+                        TotalSkippedUpdates++;
+                        return; // Skip every other frame for distant objects
+                    }
+                }
+            }
+
+            // Full update for all visible objects (simplified)
+            PerformFullUpdate(gameTime, distanceToCamera);
+        }
+
+        private void UpdateChildrenSelectively(GameTime gameTime)
+        {
+            // Only update children that are likely to be important (players, animated objects, etc.)
+            for (int i = 0; i < Children.Count; i++)
+            {
+                var child = Children[i];
+                
+                // Always update players and important objects
+                if (child is Player.PlayerObject || 
+                    child is MonsterObject ||
+                    child.Interactive ||
+                    !child.OutOfView)
+                {
+                    child.Update(gameTime);
+                }
+                // For other children, use staggered updates
+                else if (((_globalFrameCounter + child._updateOffset) % (MaxSkipFrames * 2)) == 0)
+                {
+                    child.Update(gameTime);
+                }
+            }
+        }
+
+        private void PerformFullUpdate(GameTime gameTime, float distanceToCamera)
+        {
+            TotalUpdatesPerformed++;
+            
+            // Reset debug counters every 5 seconds
+            if (Environment.TickCount - _lastResetTime > 5000)
+            {
+                _lastResetTime = Environment.TickCount;
+                // log these values or display them in debug UI
+                //Console.WriteLine($"WorldObject Optimization: {TotalSkippedUpdates} skipped, {TotalUpdatesPerformed} performed");
+                TotalSkippedUpdates = 0;
+                TotalUpdatesPerformed = 0;
+            }
             // Determine whether the object should be rendered in low quality based on distance to the camera
             if (World != null)
             {
@@ -172,8 +325,7 @@ namespace Client.Main.Objects
                 }
                 else
                 {
-                    float dist = Vector3.Distance(Camera.Instance.Position, WorldPosition.Translation);
-                    LowQuality = dist > Constants.LOW_QUALITY_DISTANCE;
+                    LowQuality = distanceToCamera > Constants.LOW_QUALITY_DISTANCE;
                 }
             }
             else
@@ -181,24 +333,47 @@ namespace Client.Main.Objects
                 LowQuality = false;
             }
 
-            // Cache parent's mouse hover state
-            bool parentIsMouseHover = Parent?.IsMouseHover ?? false;
-
-            // Only calculate intersections if needed
-            bool wouldBeMouseHover = parentIsMouseHover;
-            if (!parentIsMouseHover && (Interactive || Constants.DRAW_BOUNDING_BOXES))
+            // Mouse hover detection optimization - skip for distant/out-of-view objects
+            bool withinHoverRange = distanceToCamera < Constants.LOW_QUALITY_DISTANCE * 1.5f;
+            bool inFrustum = withinHoverRange && (Camera.Instance?.Frustum.Contains(BoundingBoxWorld) != ContainmentType.Disjoint);
+            bool shouldCheckMouseHover = inFrustum;
+            
+            if (shouldCheckMouseHover)
             {
-                float? intersectionDistance = MuGame.Instance.MouseRay.Intersects(BoundingBoxWorld);
-                ContainmentType contains = BoundingBoxWorld.Contains(MuGame.Instance.MouseRay.Position);
-                wouldBeMouseHover = intersectionDistance.HasValue || contains == ContainmentType.Contains;
+                // Determine if UI should block hover detection for world objects
+                bool uiBlockingHover = false;
+                if (World?.Scene != null)
+                {
+                    var scene = World.Scene;
+                    if (scene.MouseHoverControl != null && scene.MouseHoverControl != scene.World)
+                    {
+                        uiBlockingHover = true; // a UI element is hovered, ignore world hover
+                    }
+                }
+
+                // Cache parent's mouse hover state
+                bool parentIsMouseHover = Parent?.IsMouseHover ?? false;
+
+                // Only calculate intersections if needed and not blocked by UI
+                bool wouldBeMouseHover = parentIsMouseHover;
+                if (!parentIsMouseHover && !uiBlockingHover && (Interactive || Constants.DRAW_BOUNDING_BOXES))
+                {
+                    float? intersectionDistance = MuGame.Instance.MouseRay.Intersects(BoundingBoxWorld);
+                    ContainmentType contains = BoundingBoxWorld.Contains(MuGame.Instance.MouseRay.Position);
+                    wouldBeMouseHover = intersectionDistance.HasValue || contains == ContainmentType.Contains;
+                }
+
+                IsMouseHover = !uiBlockingHover && wouldBeMouseHover;
+
+                if (!parentIsMouseHover && IsMouseHover)
+                    World.Scene.MouseHoverObject = this;
+            }
+            else
+            {
+                IsMouseHover = false; // Distant objects can't be hovered
             }
 
-            IsMouseHover = wouldBeMouseHover;
-
-            if (!parentIsMouseHover && IsMouseHover)
-                World.Scene.MouseHoverObject = this;
-
-            // Direct indexing instead of foreach to avoid enumerator allocation
+            // Update all children for visible objects
             for (int i = 0; i < Children.Count; i++)
                 Children[i].Update(gameTime);
         }
@@ -241,9 +416,8 @@ namespace Client.Main.Objects
 
             // Limit name display to player, monster and NPC entities
             if (this is not Player.PlayerObject &&
-                this is not Monsters.MonsterObject &&
-                this is not NPCS.NPCObject &&
-                this is not NPCS.CompositeNPCObject)
+                this is not MonsterObject &&
+                this is not NPCObject)
                 return;
 
             string name = DisplayName;
@@ -263,7 +437,9 @@ namespace Client.Main.Objects
             if (screen.Z < 0f || screen.Z > 1f)
                 return;
 
-            const float scale = 0.5f;
+            // Apply render scale to font scale to maintain consistent size
+            const float baseScale = 0.5f;
+            float scale = baseScale * Constants.RENDER_SCALE;
             Vector2 size = _font.MeasureString(name) * scale;
             var sb = GraphicsManager.Instance.Sprite;
 
@@ -377,16 +553,8 @@ namespace Client.Main.Objects
 
             Vector3[] corners = BoundingBoxWorld.GetCorners();
 
-            int[] indices =
-            [
-                0, 1, 1, 2, 2, 3, 3, 0,
-                4, 5, 5, 6, 6, 7, 7, 4,
-                0, 4, 1, 5, 2, 6, 3, 7
-            ];
-
-            var vertexData = new VertexPositionColor[8];
-            for (int i = 0; i < corners.Length; i++)
-                vertexData[i] = new VertexPositionColor(corners[i], BoundingBoxColor);
+            for (int i = 0; i < 8; i++)
+                _bboxVerts[i] = new VertexPositionColor(corners[i], BoundingBoxColor);
 
             GraphicsManager.Instance.BoundingBoxEffect3D.View = Camera.Instance.View;
             GraphicsManager.Instance.BoundingBoxEffect3D.Projection = Camera.Instance.Projection;
@@ -395,7 +563,10 @@ namespace Client.Main.Objects
             foreach (var pass in GraphicsManager.Instance.BoundingBoxEffect3D.CurrentTechnique.Passes)
             {
                 pass.Apply();
-                GraphicsDevice.DrawUserIndexedPrimitives(PrimitiveType.LineList, vertexData, 0, 8, indices, 0, indices.Length / 2);
+                GraphicsDevice.DrawUserIndexedPrimitives(
+                    PrimitiveType.LineList,
+                    _bboxVerts, 0, 8,
+                    BoundingBoxIndices, 0, BoundingBoxIndices.Length / 2);
             }
 
             GraphicsDevice.DepthStencilState = previousDepthState;
@@ -418,27 +589,23 @@ namespace Client.Main.Objects
             sbInfo.Append("DepthStencilState: ").Append(DepthState.Name);
             string objectInfo = sbInfo.ToString();
 
-            float scaleFactor = DebugFontSize / Constants.BASE_FONT_SIZE;
+            float scaleFactor = DebugFontSize / Constants.BASE_FONT_SIZE * Constants.RENDER_SCALE;
             Vector2 textSize = _font.MeasureString(objectInfo) * scaleFactor;
+
+            Vector3 projectedPos = GraphicsDevice.Viewport.Project(
+                new Vector3(
+                    (BoundingBoxWorld.Min.X + BoundingBoxWorld.Max.X) / 2,
+                    BoundingBoxWorld.Max.Y + 0.5f,
+                    (BoundingBoxWorld.Min.Z + BoundingBoxWorld.Max.Z) / 2),
+                Camera.Instance.Projection,
+                Camera.Instance.View,
+                Matrix.Identity);
+
+            // Projected coordinates are already in the correct space
+
             Vector2 baseTextPos = new Vector2(
-                (int)(GraphicsDevice.Viewport.Project(
-                    new Vector3(
-                        (BoundingBoxWorld.Min.X + BoundingBoxWorld.Max.X) / 2,
-                        BoundingBoxWorld.Max.Y + 0.5f,
-                        (BoundingBoxWorld.Min.Z + BoundingBoxWorld.Max.Z) / 2),
-                    Camera.Instance.Projection,
-                    Camera.Instance.View,
-                    Matrix.Identity
-                ).X - textSize.X / 2),
-                (int)GraphicsDevice.Viewport.Project(
-                    new Vector3(
-                        (BoundingBoxWorld.Min.X + BoundingBoxWorld.Max.X) / 2,
-                        BoundingBoxWorld.Max.Y + 0.5f,
-                        (BoundingBoxWorld.Min.Z + BoundingBoxWorld.Max.Z) / 2),
-                    Camera.Instance.Projection,
-                    Camera.Instance.View,
-                    Matrix.Identity
-                ).Y
+                (int)(projectedPos.X - textSize.X / 2),
+                (int)projectedPos.Y
             );
 
             // Save previous states

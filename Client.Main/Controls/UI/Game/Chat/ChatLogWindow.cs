@@ -10,7 +10,7 @@ using Microsoft.Xna.Framework.Input;
 
 namespace Client.Main.Controls.UI
 {
-    public class ChatLogWindow : UIControl
+    public class ChatLogWindow : UIControl, IUiTexturePreloadable
     {
         public const int CHATLOG_WIDTH = 281;
         private const int MAX_TOTAL_MESSAGES = 200;
@@ -35,6 +35,14 @@ namespace Client.Main.Controls.UI
         private Texture2D _texScrollBottom;
         private Texture2D _texScrollThumb; // SCROLLBAR_ON
         private Texture2D _texResizeHandle; // DRAG_BTN
+        private static readonly string[] s_chatLogTexturePaths =
+        {
+            "Interface/newui_scrollbar_up.tga",
+            "Interface/newui_scrollbar_m.tga",
+            "Interface/newui_scrollbar_down.tga",
+            "Interface/newui_scroll_on.tga",
+            "Interface/newui_scrollbar_stretch.jpg"
+        };
 
         // --- State ---
         private readonly Dictionary<MessageType, List<ChatMessage>> _messages;
@@ -93,6 +101,8 @@ namespace Client.Main.Controls.UI
 
             UpdateLayout(); // Initial layout calculation
         }
+
+        public IEnumerable<string> GetPreloadTexturePaths() => s_chatLogTexturePaths;
 
         // --- Loading Resources ---
         public override async Task Load()
@@ -332,8 +342,8 @@ namespace Client.Main.Controls.UI
 
             base.Update(gameTime); // Updates IsMouseOver among other things
 
-            var mouse = MuGame.Instance.Mouse;
-            var prevMouse = MuGame.Instance.PrevMouseState;
+            var mouse = MuGame.Instance.UiMouseState;
+            var prevMouse = MuGame.Instance.PrevUiMouseState;
 
             _hoveredMessageGlobalIndex = -1; // Reset hover state
 
@@ -888,13 +898,13 @@ namespace Client.Main.Controls.UI
             if (!Visible || !IsMouseOver) return false; // not handled if not visible or mouse not over
 
             // Check if mouse is over the scrollbar area (not a separate _scrollBar control, but the area/logic is internal)
-            if (_showFrame && !_scrollBarArea.IsEmpty && _scrollBarArea.Contains(MuGame.Instance.Mouse.Position))
+            if (_showFrame && !_scrollBarArea.IsEmpty && _scrollBarArea.Contains(MuGame.Instance.UiMouseState.Position))
             {
                 int lines = scrollDelta / SCROLL_WHEEL_STEP;
                 if (lines == 0)
                     lines = Math.Sign(scrollDelta);
                 // If the thumb is hovered, treat as handled (simulate scrollbar logic)
-                if (!_scrollThumbArea.IsEmpty && _scrollThumbArea.Contains(MuGame.Instance.Mouse.Position))
+                if (!_scrollThumbArea.IsEmpty && _scrollThumbArea.Contains(MuGame.Instance.UiMouseState.Position))
                 {
                     // Simulate thumb scroll: scroll by one line per wheel event
                     _scrollOffset += lines; // one line per wheel step

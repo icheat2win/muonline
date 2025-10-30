@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build)",
+      "Bash(dotnet mgcb:*)",
+      "Bash(cp:*)",
+      "Bash(dotnet build:*)",
+      "Bash(find:*)",
+      "Bash(dotnet clean:*)",
+      "WebSearch",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet msbuild:*)",
+      "Bash(logfile=build.log)",
+      "Bash(dotnet list:*)"
+    ],
+    "deny": []
+  }
+}

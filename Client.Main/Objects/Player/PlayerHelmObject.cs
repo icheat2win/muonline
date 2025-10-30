@@ -8,7 +8,7 @@ namespace Client.Main.Objects.Player
     public class PlayerHelmObject : ModelObject
     {
         private PlayerClass _playerClass;
-        private ILogger _logger = ModelObject.AppLoggerFactory?.CreateLogger<PlayerObject>();
+        private new ILogger _logger = ModelObject.AppLoggerFactory?.CreateLogger<PlayerObject>();
 
         public PlayerClass PlayerClass
         {
@@ -30,6 +30,15 @@ namespace Client.Main.Objects.Player
         {
             RenderShadow = true;
             // Initial class might be set later by PlayerObject
+        }
+
+        /// <summary>
+        /// Override to exclude face mesh (mesh 1) from item material effects
+        /// </summary>
+        protected override bool ShouldApplyItemMaterial(int meshIndex)
+        {
+            // Apply item material only to mesh 0 (helmet part), not mesh 1 (face part)
+            return meshIndex == 0;
         }
 
         // Now returns Task, not void

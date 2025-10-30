@@ -14,7 +14,7 @@ using Microsoft.Xna.Framework.Input;
 
 namespace Client.Main.Controls.UI.Game
 {
-    public class MiniMapControl : UIControl
+    public class MiniMapControl : UIControl, IUiTexturePreloadable
     {
         // --- Constants (Adjust as needed) ---
         private const int MAP_DISPLAY_SIZE = 200; // On-screen size of the map view
@@ -33,6 +33,15 @@ namespace Client.Main.Controls.UI.Game
         private Texture2D _texPortalIcon;
         private Texture2D _texNpcIcon;
         private Texture2D _texExitButton;
+        private static readonly string[] s_minimapUiTextures =
+        {
+            "Interface/mini_map_ui_corner.tga",
+            "Interface/mini_map_ui_line.jpg",
+            "Interface/mini_map_ui_cha.tga",
+            "Interface/mini_map_ui_portal.tga",
+            "Interface/mini_map_ui_npc.tga",
+            "Interface/mini_map_ui_cancel.tga"
+        };
 
         // --- Child Controls ---
         private SpriteControl _playerMarker;
@@ -63,6 +72,8 @@ namespace Client.Main.Controls.UI.Game
             ControlSize = ViewSize;
             CreateChildControls();
         }
+
+        public IEnumerable<string> GetPreloadTexturePaths() => s_minimapUiTextures;
 
         private void CreateChildControls()
         {
@@ -284,7 +295,7 @@ namespace Client.Main.Controls.UI.Game
             }
 
             // Mouse Wheel for Zoom
-            int scrollDelta = MuGame.Instance.Mouse.ScrollWheelValue - MuGame.Instance.PrevMouseState.ScrollWheelValue;
+            int scrollDelta = MuGame.Instance.UiMouseState.ScrollWheelValue - MuGame.Instance.PrevUiMouseState.ScrollWheelValue;
             if (scrollDelta != 0)
             {
                 _currentZoom -= scrollDelta / 120f * ZOOM_STEP; // Divide by 120 (standard wheel delta)
@@ -296,7 +307,7 @@ namespace Client.Main.Controls.UI.Game
         {
             if (!Visible || !_tooltipLabel.Visible) _tooltipLabel.Visible = false; // Default hide
 
-            Point mousePos = MuGame.Instance.Mouse.Position;
+            Point mousePos = MuGame.Instance.UiMouseState.Position;
 
             // Check only if mouse is roughly over the map display area
             Rectangle mapScreenRect = GetMapScreenRect();
@@ -331,9 +342,9 @@ namespace Client.Main.Controls.UI.Game
                 _tooltipLabel.X = mousePos.X + 10;
                 _tooltipLabel.Y = mousePos.Y + 10;
                 // Ensure tooltip stays on screen (basic check)
-                if (_tooltipLabel.X + _tooltipLabel.ViewSize.X > MuGame.Instance.Width)
+                if (_tooltipLabel.X + _tooltipLabel.ViewSize.X > UiScaler.VirtualSize.X)
                     _tooltipLabel.X = mousePos.X - _tooltipLabel.ViewSize.X - 5;
-                if (_tooltipLabel.Y + _tooltipLabel.ViewSize.Y > MuGame.Instance.Height)
+                if (_tooltipLabel.Y + _tooltipLabel.ViewSize.Y > UiScaler.VirtualSize.Y)
                     _tooltipLabel.Y = mousePos.Y - _tooltipLabel.ViewSize.Y - 5;
 
                 _tooltipLabel.BringToFront(); // Make sure tooltip is drawn over other map elements
@@ -454,7 +465,7 @@ namespace Client.Main.Controls.UI.Game
 
             _markerScreenPositions.Clear();
 
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
 
             float mapWorldSize = Constants.TERRAIN_SIZE * Constants.TERRAIN_SCALE; // Add map world size calculation
 
@@ -547,7 +558,7 @@ namespace Client.Main.Controls.UI.Game
             float mapRotationRadians = MathHelper.ToRadians(MAP_ROTATION_DEGREES); // Should be 0
             float finalPlayerRotationOnMap = playerWorldRotationZ + MathHelper.PiOver2 - mapRotationRadians + MathHelper.ToRadians(PLAYER_ICON_ROTATION_OFFSET_DEGREES);
 
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
             spriteBatch.Draw(
                 _playerMarker.Texture,
                 centerPos,

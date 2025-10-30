@@ -1,17 +1,20 @@
-using Client.Main.Content;
-using Client.Main.Models;
 using Client.Main.Objects.Player;
 using Client.Main.Objects.Wings;
 using Microsoft.Extensions.Logging;
-using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Client.Main.Content;
+using Microsoft.Xna.Framework;
+using Client.Main.Models;
+using System;
 
 namespace Client.Main.Objects
 {
-    public abstract class HumanoidObject : WalkerObject
+    public abstract class NPCObject : WalkerObject
     {
-        protected ILogger _logger;
+        protected new ILogger _logger;
+        private DateTime _lastClickTime = DateTime.MinValue;
+        private const double CLICK_COOLDOWN_SECONDS = 0.5; // Global debounce for all NPCs
 
         public PlayerMaskHelmObject HelmMask { get; private set; }
         public PlayerHelmObject Helm { get; private set; }
@@ -23,9 +26,11 @@ namespace Client.Main.Objects
         public WeaponObject Weapon2 { get; private set; }
         public WingObject Wings { get; private set; }
 
-        protected HumanoidObject() : base()
+        public NPCObject()
         {
             _logger = AppLoggerFactory?.CreateLogger(GetType());
+            Interactive = true;
+            AnimationSpeed = 6f;
 
             // Initialize body part objects and link their animations to this parent object
             HelmMask = new PlayerMaskHelmObject { LinkParentAnimation = true, Hidden = true };
@@ -48,6 +53,29 @@ namespace Client.Main.Objects
             Children.Add(Weapon2);
             Children.Add(Wings);
         }
+
+        public override void OnClick()
+        {
+            base.OnClick();
+            // Prevent world click-to-move from triggering on NPC clicks
+            MuGame.Instance?.ActiveScene?.SetMouseInputConsumed();
+
+            // Debounce clicks - prevent spam
+            var now = DateTime.UtcNow;
+            var timeSinceLastClick = (now - _lastClickTime).TotalSeconds;
+
+            if (timeSinceLastClick < CLICK_COOLDOWN_SECONDS)
+            {
+                _logger?.LogDebug("NPC click ignored - cooldown active ({TimeRemaining:F2}s remaining)",
+                    CLICK_COOLDOWN_SECONDS - timeSinceLastClick);
+                return;
+            }
+
+            _lastClickTime = now;
+            HandleClick();
+        }
+        protected abstract void HandleClick();
+
 
         /// <summary>
         /// Loads the models for all body parts based on a specified path prefix, part prefixes, and a file suffix.
@@ -84,10 +112,24 @@ namespace Client.Main.Objects
             }
         }
 
-
-        public override void Draw(GameTime gameTime)
+        protected override void UpdateWorldBoundingBox()
         {
-            base.Draw(gameTime);
+            base.UpdateWorldBoundingBox();
+
+            var allCorners = new List<Vector3>(BoundingBoxWorld.GetCorners());
+
+            foreach (var child in Children)
+            {
+                if (child is ModelObject modelChild && modelChild.Visible && modelChild.Model != null)
+                {
+                    allCorners.AddRange(modelChild.BoundingBoxWorld.GetCorners());
+                }
+            }
+
+            if (allCorners.Count > 0)
+            {
+                BoundingBoxWorld = BoundingBox.CreateFromPoints(allCorners);
+            }
         }
 
         public override void Update(GameTime gameTime)
@@ -102,39 +144,10 @@ namespace Client.Main.Objects
 
             if (wasMoving && !IsMoving && !IsOneShotPlaying)
             {
-                if (CurrentAction == (int)PlayerAction.WalkMale || CurrentAction == (int)PlayerAction.WalkFemale)
+                if (CurrentAction == (int)PlayerAction.PlayerWalkMale || CurrentAction == (int)PlayerAction.PlayerWalkFemale)
                 {
-                    PlayAction((ushort)PlayerAction.StopMale);
+                    PlayAction((ushort)PlayerAction.PlayerStopMale);
                 }
-            }
-        }
-
-        protected override void UpdateWorldBoundingBox()
-        {
-            // 1. Wywołaj bazową implementację, aby obliczyć BoundingBox dla samego szkieletu.
-            // To jest ważne, bo inicjalizuje BoundingBoxWorld.
-            base.UpdateWorldBoundingBox();
-
-            // 2. Utwórz listę, która będzie przechowywać wszystkie punkty narożne (rogu) 
-            //    zarówno obiektu-rodzica, jak i wszystkich jego dzieci.
-            var allCorners = new List<Vector3>(BoundingBoxWorld.GetCorners());
-
-            // 3. Przejdź przez wszystkie obiekty-dzieci (zbroja, broń, skrzydła).
-            foreach (var child in Children)
-            {
-                // Interesują nas tylko widoczne obiekty z modelem, które mają poprawny BoundingBox.
-                if (child is ModelObject modelChild && modelChild.Visible && modelChild.Model != null)
-                {
-                    // 4. Dodaj punkty narożne BoundingBoxu dziecka do naszej listy.
-                    allCorners.AddRange(modelChild.BoundingBoxWorld.GetCorners());
-                }
-            }
-
-            // 5. Na podstawie wszystkich zebranych punktów, utwórz nowy, obejmujący wszystko BoundingBox.
-            //    To jest jedyne miejsce, gdzie przypisujemy nową wartość do BoundingBoxWorld.
-            if (allCorners.Count > 0)
-            {
-                BoundingBoxWorld = BoundingBox.CreateFromPoints(allCorners);
             }
         }
     }

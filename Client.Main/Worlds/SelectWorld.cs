@@ -15,22 +15,34 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Xna.Framework.Graphics;
+using Client.Main.Core.Utilities;
 
 namespace Client.Main.Worlds
 {
 
     public class SelectWorld : WorldControl
     {
-        private List<PlayerObject> _characterObjects = new List<PlayerObject>();
+        private readonly List<PlayerObject> _characterObjects = new();
+        private readonly List<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)> _characterInfos = new();
+        private readonly Dictionary<PlayerObject, LabelControl> _characterLabels = new();
+        private readonly Vector3 _characterDisplayPosition = new(14000, 12295, 250);
+        private readonly Vector3 _characterDisplayAngle = new(0, 0, MathHelper.ToRadians(90));
         private ILogger<SelectWorld> _logger;
+        private int _currentCharacterIndex = -1;
 
-        private Dictionary<PlayerObject, LabelControl> _characterLabels = new();
+        // Random animation system for character selection
+        private readonly Random _animationRandom = new Random();
 
         public SelectWorld() : base(worldIndex: 94)
         {
+            EnableShadows = false;
             _logger = MuGame.AppLoggerFactory?.CreateLogger<SelectWorld>() ?? throw new InvalidOperationException("LoggerFactory not initialized in MuGame");
             Camera.Instance.ViewFar = 5500f;
         }
+
+        public int CharacterCount => _characterObjects.Count;
+
+        public int CurrentCharacterIndex => _currentCharacterIndex;
 
         protected override void CreateMapTileObjects()
         {
@@ -68,11 +80,16 @@ namespace Client.Main.Worlds
 #endif
         }
 
-        public async Task CreateCharacterObjects(List<(string Name, CharacterClassNumber Class, ushort Level)> characters)
+        public async Task CreateCharacterObjects(List<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)> characters)
         {
-            _logger.LogInformation("Creating {Count} character objects…", characters.Count);
+            _logger.LogInformation("Creating {Count} character objects...", characters.Count);
 
-            foreach (var old in _characterObjects) { Objects.Remove(old); old.Dispose(); }
+            foreach (var old in _characterObjects)
+            {
+                old.Click -= PlayerObject_Click;
+                Objects.Remove(old);
+                old.Dispose();
+            }
             _characterObjects.Clear();
 
             foreach (var lbl in _characterLabels.Values)
@@ -82,35 +99,34 @@ namespace Client.Main.Worlds
             }
             _characterLabels.Clear();
 
-            // Positions for up to three characters in the select screen.
-            // The first entry should be the center spot so that the
-            // initially selected character appears in the middle.
-            Vector3[] pos =
+            _characterInfos.Clear();
+            _characterInfos.AddRange(characters);
+            _currentCharacterIndex = -1;
+
+            if (characters.Count == 0)
             {
-                // Center
-                new Vector3(14000, 12295, 250),
-                // Left
-                new Vector3(14000, 11995, 250),
-                // Right
-                new Vector3(14000, 12595, 250)
-            };
+                _logger.LogInformation("No characters provided for selection.");
+                return;
+            }
 
-            var loading = new List<Task>();
+            var loading = new List<Task>(characters.Count);
 
-            for (int i = 0; i < characters.Count && i < pos.Length; i++)
+            foreach (var (name, cls, lvl, appearanceBytes) in characters)
             {
-                var (name, cls, lvl) = characters[i];
-
-                var player = new PlayerObject
+                var player = new PlayerObject(new AppearanceData(appearanceBytes))
                 {
                     Name = name,
                     CharacterClass = cls,
-                    Position = pos[i],
-                    Angle = new Vector3(0, 0, MathHelper.ToRadians(90)),
-                    Interactive = true,
+                    Position = _characterDisplayPosition,
+                    Angle = _characterDisplayAngle,
+                    Interactive = false,
                     World = this,
-                    CurrentAction = PlayerAction.StopMale
+                    CurrentAction = PlayerAction.PlayerStopMale,
+                    Hidden = true
                 };
+
+                player.BoundingBoxLocal = new BoundingBox(new Vector3(-40, -40, 0), new Vector3(40, 40, 180));
+
                 player.Click += PlayerObject_Click;
 
                 _characterObjects.Add(player);
@@ -125,7 +141,8 @@ namespace Client.Main.Worlds
                     HasShadow = true,
                     ShadowColor = Color.Black * 0.8f,
                     ShadowOffset = new Vector2(1, 1),
-                    UseManualPosition = true
+                    UseManualPosition = true,
+                    Visible = false
                 };
 
                 _characterLabels.Add(player, label);
@@ -141,21 +158,113 @@ namespace Client.Main.Worlds
                    .BringToFront();
 
             _logger.LogInformation("Finished creating and loading character objects and labels.");
+
+            SetActiveCharacter(0);
         }
 
         // *** ADD GETTER FOR LABELS (used by Scene) ***
         public Dictionary<PlayerObject, LabelControl> GetCharacterLabels() => _characterLabels;
+
+        public void SetActiveCharacter(int index)
+        {
+            if (_characterObjects.Count == 0)
+            {
+                _currentCharacterIndex = -1;
+                return;
+            }
+
+            if (index < 0 || index >= _characterObjects.Count)
+            {
+                _logger.LogWarning("Attempted to activate character at invalid index {Index}", index);
+                return;
+            }
+
+            if (_currentCharacterIndex == index)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _characterObjects.Count; i++)
+            {
+                var player = _characterObjects[i];
+                bool isActive = i == index;
+
+                player.Hidden = !isActive;
+                player.Interactive = isActive;
+
+                if (isActive)
+                {
+                    if (player.Position != _characterDisplayPosition)
+                        player.Position = _characterDisplayPosition;
+                    if (player.Angle != _characterDisplayAngle)
+                        player.Angle = _characterDisplayAngle;
+                }
+
+                if (_characterLabels.TryGetValue(player, out var label))
+                {
+                    label.Visible = isActive;
+                }
+            }
+
+            _currentCharacterIndex = index;
+
+            // Play a random emote animation when character is selected
+            var activePlayer = _characterObjects[index];
+            if (activePlayer != null && !activePlayer.Hidden)
+            {
+                PlayRandomEmoteForActiveCharacter();
+            }
+        }
+
+        private void PlayRandomEmoteForActiveCharacter()
+        {
+            if (_currentCharacterIndex < 0 || _currentCharacterIndex >= _characterObjects.Count)
+                return;
+
+            var activePlayer = _characterObjects[_currentCharacterIndex];
+            if (activePlayer == null || activePlayer.Hidden)
+                return;
+
+            // Check if character is already playing an animation
+            if (activePlayer.IsOneShotPlaying)
+                return;
+
+            // Define available emote animations based on gender
+            bool isFemale = PlayerActionMapper.IsCharacterFemale(activePlayer.CharacterClass);
+            var availableEmotes = isFemale
+                ? new[] { PlayerAction.PlayerSeeFemale1, PlayerAction.PlayerWinFemale1, PlayerAction.PlayerSmileFemale1 }
+                : new[] { PlayerAction.PlayerSee1, PlayerAction.PlayerWin1, PlayerAction.PlayerSmile1 };
+
+            // Select random emote
+            var randomEmote = availableEmotes[_animationRandom.Next(availableEmotes.Length)];
+
+            _logger.LogDebug("Playing random emote {Emote} for character {CharacterName} (Female: {IsFemale})",
+                randomEmote, activePlayer.Name, isFemale);
+
+            // Play the animation using the new method
+            activePlayer.PlayEmoteAnimation(randomEmote);
+        }
 
 
         private void PlayerObject_Click(object sender, EventArgs e)
         {
             if (sender is PlayerObject clickedPlayer && Scene is SelectCharacterScene selectScene)
             {
+                if (_currentCharacterIndex < 0 || _characterObjects[_currentCharacterIndex] != clickedPlayer)
+                {
+                    _logger.LogDebug("Ignoring click on inactive character '{Name}'.", clickedPlayer.Name);
+                    return;
+                }
                 _logger.LogInformation("PlayerObject '{Name}' clicked.", clickedPlayer.Name);
                 selectScene.CharacterSelected(clickedPlayer.Name);
             }
             else if (sender is ModelObject bodyPart && bodyPart.Parent is PlayerObject parentPlayer && Scene is SelectCharacterScene parentScene)
             {
+                if (_currentCharacterIndex < 0 || _characterObjects[_currentCharacterIndex] != parentPlayer)
+                {
+                    _logger.LogDebug("Ignoring click on inactive body part of '{Name}'.", parentPlayer.Name);
+                    return;
+                }
                 _logger.LogInformation("Body part of '{Name}' clicked.", parentPlayer.Name);
                 parentScene.CharacterSelected(parentPlayer.Name);
             }
@@ -187,6 +296,7 @@ namespace Client.Main.Worlds
                                  Camera.Instance.View,
                                  Matrix.Identity);
 
+                    // Projected coordinates are already in the correct space
                     if (sp.Z is < 0 or > 1)
                     {
                         label.Visible = false;
@@ -194,11 +304,14 @@ namespace Client.Main.Worlds
                     }
 
                     var font = GraphicsManager.Instance.Font;
-                    float k = label.FontSize / Constants.BASE_FONT_SIZE;
+                    float k = label.FontSize / Constants.BASE_FONT_SIZE; // Remove RENDER_SCALE - UI system handles this
                     Vector2 s = font.MeasureString(label.Text) * k;
 
-                    label.X = (int)(sp.X - s.X / 2f);
-                    label.Y = (int)(sp.Y - s.Y - 4);
+                    // Convert screen coordinates to virtual coordinates for UI system
+                    var virtualPos = UiScaler.ToVirtual(new Point((int)sp.X, (int)sp.Y));
+
+                    label.X = (int)(virtualPos.X - s.X / 2f);
+                    label.Y = (int)(virtualPos.Y - s.Y - 4);
                     label.ControlSize = new Point((int)s.X, (int)s.Y);
                     label.Visible = true;
                 }

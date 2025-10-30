@@ -2,7 +2,6 @@ using Client.Main.Content;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
-using System;
 
 namespace Client.Main.Controllers
 {
@@ -30,12 +29,26 @@ namespace Client.Main.Controllers
         public BasicEffect BoundingBoxEffect3D { get; private set; }
         public Effect AlphaRGBEffect { get; set; }
         public Effect FXAAEffect { get; private set; }
+        public Effect GammaCorrectionEffect { get; private set; }
 
         public RenderTarget2D MainRenderTarget { get; private set; }
         public RenderTarget2D TempTarget1 { get; private set; }
         public RenderTarget2D TempTarget2 { get; private set; }
 
         public Effect ShadowEffect { get; private set; }
+        public Effect ItemMaterialEffect { get; private set; }
+        public Effect MonsterMaterialEffect { get; private set; }
+        public Effect DynamicLightingEffect { get; private set; }
+        
+        // RasterizerState cache to avoid per-mesh allocations
+        private static readonly Dictionary<(float bias, CullMode cull), RasterizerState> _rasterizerCache = new();
+        
+        // Cached DepthStencilState for highlight rendering to avoid allocations
+        public static readonly DepthStencilState ReadOnlyDepth = new DepthStencilState
+        {
+            DepthBufferEnable = true,
+            DepthBufferWriteEnable = false
+        };
 
         public void Init(GraphicsDevice graphicsDevice, ContentManager content)
         {
@@ -54,6 +67,10 @@ namespace Client.Main.Controllers
             AlphaRGBEffect = LoadEffect("AlphaRGB");
             FXAAEffect = LoadEffect("FXAA");
             ShadowEffect = LoadEffect("Shadow");
+            GammaCorrectionEffect = LoadEffect("GammaCorrection");
+            ItemMaterialEffect = LoadEffect("ItemMaterial");
+            MonsterMaterialEffect = LoadEffect("MonsterMaterial");
+            DynamicLightingEffect = LoadEffect("DynamicLighting");
 
             InitializeFXAAEffect();
 
@@ -98,6 +115,54 @@ namespace Client.Main.Controllers
             FXAAEffect?.Parameters["Resolution"]?.SetValue(new Vector2(_graphicsDevice.Viewport.Width, _graphicsDevice.Viewport.Height));
         }
 
+
+        public void UpdateRenderScale()
+        {
+            // Dispose old render targets
+            MainRenderTarget?.Dispose();
+            TempTarget1?.Dispose();
+            TempTarget2?.Dispose();
+            EffectRenderTarget?.Dispose();
+
+            // Recreate with new scale
+            InitializeRenderTargets();
+
+            // Update UiScaler with new render scale
+            var settings = MuGame.AppSettings?.Graphics;
+            if (settings != null)
+            {
+                UiScaler.Configure(
+                    MuGame.Instance.Width,
+                    MuGame.Instance.Height,
+                    settings.UiVirtualWidth,
+                    settings.UiVirtualHeight);
+            }
+        }
+
+        /// <summary>
+        /// Gets the appropriate SamplerState based on quality settings.
+        /// </summary>
+        public static SamplerState GetQualitySamplerState()
+        {
+            if (Constants.HIGH_QUALITY_TEXTURES)
+            {
+                return SamplerState.AnisotropicClamp;
+            }
+            return SamplerState.PointClamp;
+        }
+
+        /// <summary>
+        /// Gets the appropriate SamplerState for linear sampling based on quality settings.
+        /// </summary>
+        public static SamplerState GetQualityLinearSamplerState()
+        {
+            if (Constants.HIGH_QUALITY_TEXTURES)
+            {
+                return SamplerState.AnisotropicWrap;
+            }
+            return SamplerState.LinearClamp;
+        }
+
         private void InitializeRenderTargets()
         {
             PresentationParameters pp = _graphicsDevice.PresentationParameters;
@@ -105,16 +170,29 @@ namespace Client.Main.Controllers
             int targetWidth = MuGame.Instance.Width;
             int targetHeight = MuGame.Instance.Height;
 
-            //#if ANDROID || IOS
-            //        targetWidth = (int)(targetWidth * 0.5f); //TODO: adjust the controls 
-            //        targetHeight = (int)(targetHeight * 0.5f);
-            //#endif
+            // Apply render scale for internal resolution
+            targetWidth = (int)(targetWidth * Constants.RENDER_SCALE);
+            targetHeight = (int)(targetHeight * Constants.RENDER_SCALE);
 
-            MainRenderTarget = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight, false, pp.BackBufferFormat, DepthFormat.Depth24);
-            TempTarget1 = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight);
-            TempTarget2 = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight);
+            // POPRAWKA: Używamy SurfaceFormat.Color zamiast pp.BackBufferFormat dla MSAA
+            // to pomaga z problemem gamma
+            SurfaceFormat renderTargetFormat = Constants.MSAA_ENABLED ? SurfaceFormat.Color : pp.BackBufferFormat;
 
-            EffectRenderTarget = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight, false, pp.BackBufferFormat, DepthFormat.Depth24);
+            MainRenderTarget = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight, false,
+                renderTargetFormat, DepthFormat.Depth24,
+                Constants.MSAA_ENABLED ? pp.MultiSampleCount : 0,
+                RenderTargetUsage.DiscardContents);
+
+            // Temp targets don't need MSAA
+            TempTarget1 = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight, false,
+                SurfaceFormat.Color, DepthFormat.None);
+            TempTarget2 = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight, false,
+                SurfaceFormat.Color, DepthFormat.None);
+
+            EffectRenderTarget = new RenderTarget2D(_graphicsDevice, targetWidth, targetHeight, false,
+                renderTargetFormat, DepthFormat.Depth24,
+                Constants.MSAA_ENABLED ? pp.MultiSampleCount : 0,
+                RenderTargetUsage.DiscardContents);
         }
 
         private Effect LoadEffect(string effectName)
@@ -157,9 +235,45 @@ namespace Client.Main.Controllers
             AlphaRGBEffect?.Dispose();
             FXAAEffect?.Dispose();
             ShadowEffect?.Dispose();
+            DynamicLightingEffect?.Dispose();
+            ItemMaterialEffect?.Dispose();
+            MonsterMaterialEffect?.Dispose();
             AlphaTestEffect3D?.Dispose();
             BoundingBoxEffect3D?.Dispose();
             BasicEffect3D?.Dispose();
+            
+            // Dispose cached rasterizer states
+            foreach (var state in _rasterizerCache.Values)
+                state.Dispose();
+            _rasterizerCache.Clear();
+        }
+        
+        /// <summary>
+        /// Gets a cached RasterizerState with the specified depth bias and cull mode to avoid per-mesh allocations.
+        /// PERFORMANCE: This eliminates expensive RasterizerState creation during rendering.
+        /// </summary>
+        public static RasterizerState GetCachedRasterizerState(float depthBias, CullMode cullMode, RasterizerState template = null)
+        {
+            // Normalize depth bias to common values to improve cache hit rate
+            float normalizedBias = depthBias == 0f ? 0f : 
+                                 Math.Abs(depthBias) < 0.00001f ? -0.00002f : depthBias;
+            
+            var key = (normalizedBias, cullMode);
+            
+            if (_rasterizerCache.TryGetValue(key, out var cachedState))
+                return cachedState;
+
+            // Create new state and cache it
+            var newState = new RasterizerState
+            {
+                CullMode = cullMode,
+                FillMode = template?.FillMode ?? FillMode.Solid,
+                DepthBias = normalizedBias,
+                SlopeScaleDepthBias = normalizedBias * 0.1f
+            };
+            
+            _rasterizerCache[key] = newState;
+            return newState;
         }
     }
 }

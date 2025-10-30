@@ -7,14 +7,16 @@ using System.Threading.Tasks;
 using Client.Main.Objects.Effects;
 using Microsoft.Xna.Framework;
 using Microsoft.Extensions.Logging;
+using System;
 
 namespace Client.Main.Objects.NPCS
 {
     [NpcInfo(257, "Elf Soldier")]
-    public class ElfSoldier : CompositeNPCObject
+    public class ElfSoldier : NPCObject
     {
         private new readonly ILogger<ElfSoldier> _logger;
         private WingObject _wings;
+
         public ElfSoldier()
         {
             _logger = AppLoggerFactory?.CreateLogger<ElfSoldier>();
@@ -39,11 +41,18 @@ namespace Client.Main.Objects.NPCS
 
             await SetBodyPartsAsync("Player/", "HelmMale", "ArmorMale", "PantMale", "GloveMale", "BootMale", 25);
 
+            // Set item enhancement level +11 for all equipment parts
+            Helm.ItemLevel = 11;
+            Armor.ItemLevel = 11;
+            Pants.ItemLevel = 11;
+            Gloves.ItemLevel = 11;
+            Boots.ItemLevel = 11;
+
             _wings.Model = await BMDLoader.Instance.Prepare("Item/Wing04.bmd");
 
             await base.Load();
 
-            CurrentAction = (int)PlayerAction.StopFlying;
+            CurrentAction = (int)PlayerAction.PlayerStopFly;
             Scale = 1.0f;
 
             var currentBBox = BoundingBoxLocal;
@@ -51,6 +60,20 @@ namespace Client.Main.Objects.NPCS
                 new Vector3(currentBBox.Max.X, currentBBox.Max.Y, currentBBox.Max.Z + 70f));
         }
 
-        protected override void HandleClick() { }
+        protected override void HandleClick()
+        {
+            _logger?.LogInformation("Elf Soldier clicked - sending buff request sequence (NetworkId: {NetworkId})", NetworkId);
+
+            // Send complete buff sequence: TalkToNpc -> BuffRequest
+            var characterService = MuGame.Network?.GetCharacterService();
+            if (characterService != null)
+            {
+                _ = characterService.SendElfSoldierBuffSequenceAsync(NetworkId);
+            }
+            else
+            {
+                _logger?.LogWarning("CharacterService is null - cannot send Elf Soldier buff sequence");
+            }
+        }
     }
 }

@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Client.Data.BMD;
 using Client.Main.Controls.UI.Game.Inventory;
+using Microsoft.Extensions.Logging;
 
 namespace Client.Main.Core.Utilities
 {
@@ -14,6 +15,7 @@ namespace Client.Main.Core.Utilities
     {
         /// <summary>Lookup cache: (Group, Id) → item definition.</summary>
         private static readonly Dictionary<(byte Group, short Id), ItemDefinition> _definitions;
+        private static readonly ILogger _logger = MuGame.AppLoggerFactory?.CreateLogger("ItemDatabase");
 
         static ItemDatabase() => _definitions = InitializeItemData();
 
@@ -26,7 +28,7 @@ namespace Client.Main.Core.Utilities
 
             var assembly = Assembly.GetExecutingAssembly();
 
-            // Find *one* resource whose name ends with "items.bmd"
+            // Find *one* resource whose name ends with "item.bmd"
             var resourceName = assembly.GetManifestResourceNames()
                                        .SingleOrDefault(n =>
                                            n.EndsWith("item.bmd", StringComparison.OrdinalIgnoreCase));
@@ -34,7 +36,7 @@ namespace Client.Main.Core.Utilities
             if (resourceName == null)
             {
                 Console.WriteLine(
-                    "Embedded resource 'items.bmd' not found. " +
+                    "Embedded resource 'item.bmd' not found. " +
                     "Verify Build Action = Embedded Resource and correct RootNamespace.");
                 return data;
             }
@@ -106,7 +108,10 @@ namespace Client.Main.Core.Utilities
                         RequiredEnergy = item.ReqEne,
                         RequiredLevel = item.ReqLvl,
                         TwoHanded = item.TwoHands != 0,
-                        AllowedClasses = BuildAllowedClasses(item)
+                        Group = item.ItemSubGroup,
+                        AllowedClasses = BuildAllowedClasses(item),
+                        IsExpensive = item.Expensive != 0,
+                        CanSellToNpc = item.SellNpc != 0
                     };
 
                     data.Add(key, definition);
@@ -125,6 +130,7 @@ namespace Client.Main.Core.Utilities
         public static ItemDefinition GetItemDefinition(byte group, short id)
         {
             _definitions.TryGetValue((group, id), out var def);
+
             return def;
         }
 
@@ -134,6 +140,13 @@ namespace Client.Main.Core.Utilities
             short id = itemData[0];
             byte group = (byte)(itemData[5] >> 4);
             return GetItemDefinition(group, id);
+        }
+
+        public static byte GetItemGroup(ReadOnlySpan<byte> itemData)
+        {
+            if (itemData.Length < 6) return 0;
+            byte group = (byte)(itemData[5] >> 4);
+            return group;
         }
 
         public static string GetItemName(byte group, short id) =>
@@ -188,6 +201,7 @@ namespace Client.Main.Core.Utilities
             if ((excByte & 0b0010_0000) != 0) list.Add("Zen");
             return list;
         }
+
 
         public static string ParseSocketOption(byte socketByte) => $"S:{socketByte}";
 

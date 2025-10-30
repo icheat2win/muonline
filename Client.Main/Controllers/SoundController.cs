@@ -16,10 +16,23 @@ namespace Client.Main.Controllers
         private Dictionary<string, SoundEffect> _soundEffectCache = new Dictionary<string, SoundEffect>();
         private SoundEffectInstance _activeBackgroundMusicInstance;
         private string _currentBackgroundMusicPath;
+        private SoundEffectInstance _activeAmbientSoundInstance;
+        private string _currentAmbientSoundPath;
         private HashSet<string> _failedPaths = new HashSet<string>();
 
-        private readonly Dictionary<string, SoundEffectInstance> _managedLoopingInstances = new Dictionary<string, SoundEffectInstance>();
+        private sealed class ManagedLoopData
+        {
+            public SoundEffectInstance Instance;
+            public float BaseVolume;
+        }
+
+        private readonly Dictionary<string, ManagedLoopData> _managedLoopingInstances = new Dictionary<string, ManagedLoopData>();
         private ILogger _logger = MuGame.AppLoggerFactory?.CreateLogger<SoundController>();
+
+        private SoundController()
+        {
+            SoundEffect.MasterVolume = MathHelper.Clamp(Constants.SOUND_EFFECTS_VOLUME / 100f, 0f, 1f);
+        }
 
         public void StopBackgroundMusic()
         {
@@ -54,6 +67,7 @@ namespace Client.Main.Controllers
                 _activeBackgroundMusicInstance.IsLooped = true;
                 try
                 {
+                    ApplyBackgroundMusicVolume();
                     _activeBackgroundMusicInstance.Play();
                     _currentBackgroundMusicPath = relativePath;
                 }
@@ -77,6 +91,57 @@ namespace Client.Main.Controllers
                 return;
 
             LoadSoundEffectData(Path.Combine(Constants.DataPath, relativePath));
+        }
+
+        public void StopAmbientSound()
+        {
+            _activeAmbientSoundInstance?.Stop(true);
+            _activeAmbientSoundInstance?.Dispose();
+            _activeAmbientSoundInstance = null;
+            _currentAmbientSoundPath = null;
+        }
+
+        public void PlayAmbientSound(string relativePath)
+        {
+            if (!Constants.SOUND_EFFECTS || string.IsNullOrEmpty(relativePath))
+            {
+                StopAmbientSound();
+                return;
+            }
+
+            if (_currentAmbientSoundPath == relativePath &&
+                _activeAmbientSoundInstance != null &&
+                !_activeAmbientSoundInstance.IsDisposed &&
+                _activeAmbientSoundInstance.State == SoundState.Playing)
+            {
+                return;
+            }
+
+            StopAmbientSound();
+
+            SoundEffect ambientEffect = LoadSoundEffectData(Path.Combine(Constants.DataPath, relativePath));
+            if (ambientEffect != null)
+            {
+                _activeAmbientSoundInstance = ambientEffect.CreateInstance();
+                _activeAmbientSoundInstance.IsLooped = true;
+                _activeAmbientSoundInstance.Volume = 1f; // Lower volume for ambient sounds
+                try
+                {
+                    _activeAmbientSoundInstance.Play();
+                    _currentAmbientSoundPath = relativePath;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug($"[PlayAmbientSound] Error playing sound '{relativePath}': {ex.Message}");
+                    _activeAmbientSoundInstance.Dispose();
+                    _activeAmbientSoundInstance = null;
+                    _currentAmbientSoundPath = null;
+                }
+            }
+            else
+            {
+                _logger?.LogDebug($"[PlayAmbientSound] Failed to load SoundEffect for: {relativePath}");
+            }
         }
 
         /// <summary>
@@ -107,9 +172,7 @@ namespace Client.Main.Controllers
             if (loop)
             {
                 string instanceKey = fullPath.ToLowerInvariant();
-                SoundEffectInstance instance;
-
-                if (!_managedLoopingInstances.TryGetValue(instanceKey, out instance) || instance == null || instance.IsDisposed)
+                if (!_managedLoopingInstances.TryGetValue(instanceKey, out var managed) || managed.Instance == null || managed.Instance.IsDisposed)
                 {
                     SoundEffect sfxData = LoadSoundEffectData(fullPath);
                     if (sfxData == null || sfxData.IsDisposed)
@@ -117,14 +180,23 @@ namespace Client.Main.Controllers
                         _logger?.LogDebug($"[ManagedLoop] Failed to load SoundEffect data for: {relativePath}");
                         return;
                     }
-                    instance = sfxData.CreateInstance();
-                    instance.IsLooped = true;
-                    _managedLoopingInstances[instanceKey] = instance;
+
+                    var newInstance = sfxData.CreateInstance();
+                    newInstance.IsLooped = true;
+                    managed = new ManagedLoopData
+                    {
+                        Instance = newInstance,
+                        BaseVolume = 0f
+                    };
+                    _managedLoopingInstances[instanceKey] = managed;
                 }
 
-                instance.Volume = volume;
+                var instance = managed.Instance;
+                float fxFactor = Constants.SOUND_EFFECTS_VOLUME / 100f;
+                managed.BaseVolume = MathHelper.Clamp(volume, 0f, 1f);
+                UpdateManagedLoopVolume(managed);
 
-                if (volume > 0.01f)
+                if (managed.BaseVolume > 0.01f)
                 {
                     if (instance.State != SoundState.Playing)
                     {
@@ -135,17 +207,18 @@ namespace Client.Main.Controllers
                         catch (Exception ex)
                         {
                             _logger?.LogDebug($"[ManagedLoop] Error playing instance of '{relativePath}': {ex.Message}");
-                            instance.Dispose(); // Usuń uszkodzoną instancję
+                            instance.Dispose();
                             _managedLoopingInstances.Remove(instanceKey);
                         }
                     }
-                }
-                else
-                {
-                    if (instance.State == SoundState.Playing)
+                    else
                     {
-                        instance.Pause();
+                        UpdateManagedLoopVolume(managed);
                     }
+                }
+                else if (instance.State == SoundState.Playing)
+                {
+                    instance.Pause();
                 }
             }
             else
@@ -156,11 +229,13 @@ namespace Client.Main.Controllers
                     return;
                 }
 
-                if (volume > 0.01f)
+                float fxFactor = Constants.SOUND_EFFECTS_VOLUME / 100f;
+                if (volume > 0.01f && fxFactor > 0f)
                 {
                     try
                     {
-                        sfx.Play(volume, 0.0f, 0.0f);
+                        var scaled = MathHelper.Clamp(volume * fxFactor, 0f, 1f);
+                        sfx.Play(scaled, 0.0f, 0.0f);
                     }
                     catch (Exception ex)
                     {
@@ -180,11 +255,90 @@ namespace Client.Main.Controllers
 
             try
             {
-                sfx.Play();
+                var volume = MathHelper.Clamp(Constants.SOUND_EFFECTS_VOLUME / 100f, 0f, 1f);
+                if (volume <= 0f)
+                {
+                    return;
+                }
+                sfx.Play(volume, 0.0f, 0.0f);
             }
             catch (Exception ex)
             {
                 _logger?.LogDebug($"[PlayEffect] Error playing sound '{relativePath}': {ex.Message}");
+            }
+        }
+
+        public void ApplyBackgroundMusicVolume()
+        {
+            if (_activeBackgroundMusicInstance != null && !_activeBackgroundMusicInstance.IsDisposed)
+            {
+                var rawVolume = Constants.BACKGROUND_MUSIC_VOLUME / 100f;
+                if (rawVolume <= 0f)
+                {
+                    StopBackgroundMusic();
+                    return;
+                }
+
+                var volume = MathHelper.Clamp(rawVolume, 0f, 1f);
+
+                if (float.IsNaN(volume) || float.IsInfinity(volume))
+                {
+                    volume = 1f;
+                }
+
+                volume = Math.Max(0f, Math.Min(1f, volume));
+
+                _activeBackgroundMusicInstance.Volume = volume;
+            }
+        }
+
+        public void ApplySoundEffectsVolume()
+        {
+            float master = Constants.SOUND_EFFECTS ? MathHelper.Clamp(Constants.SOUND_EFFECTS_VOLUME / 100f, 0f, 1f) : 0f;
+            SoundEffect.MasterVolume = master;
+            foreach (var entry in _managedLoopingInstances.Values)
+            {
+                UpdateManagedLoopVolume(entry);
+            }
+        }
+
+        private void UpdateManagedLoopVolume(ManagedLoopData managed)
+        {
+            if (managed?.Instance == null || managed.Instance.IsDisposed)
+            {
+                return;
+            }
+
+            if (!Constants.SOUND_EFFECTS)
+            {
+                managed.Instance.Volume = 0f;
+                if (managed.Instance.State == SoundState.Playing)
+                {
+                    managed.Instance.Pause();
+                }
+                return;
+            }
+
+            float factor = Constants.SOUND_EFFECTS_VOLUME / 100f;
+            var calculatedVolume = managed.BaseVolume * factor;
+            managed.Instance.Volume = MathHelper.Clamp(calculatedVolume, 0f, 1f);
+            if (managed.Instance.Volume <= 0f)
+            {
+                if (managed.Instance.State == SoundState.Playing)
+                {
+                    managed.Instance.Pause();
+                }
+            }
+            else if (managed.Instance.State != SoundState.Playing)
+            {
+                try
+                {
+                    managed.Instance.Play();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug($"[ManagedLoop] Error resuming loop instance: {ex.Message}");
+                }
             }
         }
 
@@ -319,8 +473,13 @@ namespace Client.Main.Controllers
 
             foreach (var instanceEntry in _managedLoopingInstances)
             {
-                instanceEntry.Value?.Stop(true);
-                instanceEntry.Value?.Dispose();
+                var managed = instanceEntry.Value;
+                if (managed?.Instance != null)
+                {
+                    managed.Instance.Stop(true);
+                    managed.Instance.Dispose();
+                    managed.Instance = null;
+                }
             }
             _managedLoopingInstances.Clear();
 

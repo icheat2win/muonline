@@ -75,9 +75,10 @@ namespace Client.Main.Objects.Effects
             AffectedByTransparency = false;
             Status = GameControlStatus.Ready;
 
-            // Critical hit detection
-            _isCritical = text.Contains("!") || text.Contains("CRIT") ||
-                          (int.TryParse(text, out int dmg) && dmg > 500);
+            // Critical hit detection - enhanced to detect more crit patterns
+            _isCritical = text.Contains("!") || text.Contains("CRIT") || text.Contains("CRITICAL") ||
+                          (int.TryParse(text, out int dmg) && dmg > 500) ||
+                          text.EndsWith("!!") || text.StartsWith("*");
 
             // Randomised motion -------------------------------------------------
             float speedFactor = _isCritical ? 1.5f : 1f;
@@ -182,10 +183,14 @@ namespace Client.Main.Objects.Effects
                 Camera.Instance.View,
                 Matrix.Identity);
 
-            // final screen coordinates
-            _screenPosition = new Vector2(
+            // Projected coordinates are already in the correct space
+
+            // final screen coordinates - convert to virtual coordinates for UiScaler
+            Vector2 screenPos = new Vector2(
                 proj.X + _currentHorizontalOffset + wobble,
                 proj.Y + _currentVerticalOffset);
+            var virtualPos = UiScaler.ToVirtual(new Point((int)screenPos.X, (int)screenPos.Y));
+            _screenPosition = new Vector2(virtualPos.X, virtualPos.Y);
 
             Hidden = (proj.Z < 0f || proj.Z > 1f);
             base.Update(gameTime);
@@ -206,6 +211,7 @@ namespace Client.Main.Objects.Effects
 
             const float fontSize = 12f;
             float baseScale = fontSize / Constants.BASE_FONT_SIZE;
+            // UiScaler will handle render scale transformation
             float scale = Math.Max(0.1f, baseScale * _currentScale);
             Vector2 origin = font.MeasureString(Text) * 0.5f;
 
@@ -240,9 +246,11 @@ namespace Client.Main.Objects.Effects
                 spriteBatch,
                 SpriteSortMode.Deferred,
                 BlendState.AlphaBlend,
-                SamplerState.LinearClamp,
+                SamplerState.AnisotropicClamp,
                 DepthStencilState.None,
-                RasterizerState.CullNone))
+                RasterizerState.CullNone,
+                null,
+                UiScaler.SpriteTransform))
             {
                 // Shadow (only for bigger text)
                 if (scale > 0.8f)
@@ -251,6 +259,30 @@ namespace Client.Main.Objects.Effects
                         font, Text,
                         _screenPosition + _shadowOffset,
                         Color.Black * (Alpha * ShadowAlpha),
+                        0f, origin, scale, SpriteEffects.None, 0f);
+                }
+
+                // Outline ----------------------------------------------------
+                float outline = 1.5f;
+                Color outlineColor = Color.Black * Alpha;
+                Vector2[] outlineOffsets =
+                {
+                    new(-outline, 0f),
+                    new(outline, 0f),
+                    new(0f, -outline),
+                    new(0f, outline),
+                    new(-outline, -outline),
+                    new(outline, -outline),
+                    new(-outline, outline),
+                    new(outline, outline)
+                };
+
+                foreach (Vector2 off in outlineOffsets)
+                {
+                    spriteBatch.DrawString(
+                        font, Text,
+                        _screenPosition + off,
+                        outlineColor,
                         0f, origin, scale, SpriteEffects.None, 0f);
                 }
 
@@ -323,6 +355,30 @@ namespace Client.Main.Objects.Effects
                        (ApproxHeadHeight + PlayerModelTopTextOffsetZ);
             }
 
+            // Prefer bone-based top for smoothness (avoids bbox throttling)
+            if (target is ModelObject model)
+            {
+                var bones = model.GetBoneTransforms();
+                if (bones != null && bones.Length > 0)
+                {
+                    float maxZ = float.MinValue;
+                    for (int i = 0; i < bones.Length; i++)
+                    {
+                        Vector3 local = bones[i].Translation;
+                        Vector3 world = Vector3.Transform(local, model.WorldPosition);
+                        if (world.Z > maxZ)
+                            maxZ = world.Z;
+                    }
+
+                    if (maxZ > float.MinValue)
+                    {
+                        var wp = model.WorldPosition.Translation;
+                        return new Vector3(wp.X, wp.Y, maxZ + MonsterBBoxTopTextOffsetZ);
+                    }
+                }
+            }
+
+            // Fallback to bbox if bones unavailable
             return new Vector3(
                 (target.BoundingBoxWorld.Min.X + target.BoundingBoxWorld.Max.X) * 0.5f,
                 (target.BoundingBoxWorld.Min.Y + target.BoundingBoxWorld.Max.Y) * 0.5f,

@@ -1,710 +1,691 @@
-﻿namespace Client.Main.Models
+namespace Client.Main.Models
 {
+    // public enum PlayerAction
+    // {
+    //     Set = 0,
+    //     PlayerStopMale = 1,
+    //     PlayerStopFemale = 2,
+    //     PlayerStopSummoner = 3,
+    //     PlayerStopRagefighter = 4, // Stop/Idle (Rage Fighter)
+    //     ActionUnknown5 = 5,
+    //     ActionUnknown6 = 6,
+    //     ActionUnknown7 = 7,
+    //     ActionUnknown8 = 8,
+    //     ActionUnknown9 = 9,
+    //     PlayerStopTwoHandSword = 10,
+    //     PlayerStopSpear = 11,
+    //     PlayerStopScythe = 12,
+    //     PlayerStopBow = 13,
+    //     PlayerStopCrossbow = 14,
+    //     PlayerStopWand = 15,
+    //     ActionUnknown16 = 16,
+    //     PlayerStopFly = 17,
+    //     StopFlying2 = 18,
+    //     PlayerStopFlyCrossbow = 19,
+    //     ActionUnknown20 = 20,
+    //     ActionUnknown21 = 21,
+    //     ActionUnknown22 = 22,
+    //     ActionUnknown23 = 23,
+    //     ActionUnknown24 = 24,
+    //     ActionUnknown25 = 25,
+    //     PlayerRunTwoSword = 26,
+    //     ActionUnknown27 = 27,
+    //     PlayerDarklordStand = 28,
+    //     ActionUnknown29 = 29,
+    //     ActionUnknown30 = 30,
+    //     ActionUnknown31 = 31,
+    //     ActionUnknown32 = 32,
+    //     ActionUnknown33 = 33,
+    //     ActionUnknown34 = 34,
+    //     ActionUnknown35 = 35,
+    //     ActionUnknown36 = 36,
+    //     ActionUnknown37 = 37,
+    //     ActionUnknown38 = 38,
+    //     ActionUnknown39 = 39,
+    //     ActionUnknown40 = 40,
+    //     ActionUnknown41 = 41,
+    //     ActionUnknown42 = 42,
+    //     ActionUnknown43 = 43,
+    //     ActionUnknown44 = 44,
+    //     PlayerAttackTwoHandSword2 = 45,
+    //     PlayerAttackTwoHandSword3 = 46,
+    //     PlayerWalkMale = 47,
+    //     PlayerWalkFemale = 48,
+    //     PlayerWalkSword = 49,
+    //     PlayerWalkTwoHandSword = 50,
+    //     PlayerWalkSpear = 51,
+    //     PlayerWalkScythe = 52,
+    //     PlayerWalkBow = 53,
+    //     PlayerWalkCrossbow = 54,
+    //     PlayerWalkWand = 55,
+    //     ActionUnknown56 = 56,
+    //     PlayerDarklordWalk = 57,
+    //     PlayerWalkSwim = 58,
+    //     PlayerRunWand = 59,
+    //     ActionUnknown60 = 60,
+    //     ActionUnknown61 = 61,
+    //     ActionUnknown62 = 62,
+    //     ActionUnknown63 = 63,
+    //     ActionUnknown64 = 64,
+    //     ActionUnknown65 = 65,
+    //     ActionUnknown66 = 66,
+    //     ActionUnknown67 = 67,
+    //     ActionUnknown68 = 68,
+    //     ActionUnknown69 = 69,
+    //     ActionUnknown70 = 70,
+    //     ActionUnknown71 = 71,
+    //     ActionUnknown72 = 72,
+    //     ActionUnknown73 = 73,
+    //     ActionUnknown74 = 74,
+    //     PlayerRun = 75,
+    //     PlayerRunSword = 76,
+    //     PlayerRunTwoHandSword = 77,
+    //     PlayerRunSpear = 78,
+    //     PlayerRunBow = 79,
+    //     PlayerRunCrossbow = 80,
+    //     ActionUnknown81 = 81,
+    //     ActionUnknown82 = 82,
+    //     ActionUnknown83 = 83,
+    //     PlayerRunSwim = 84,
+    //     PlayerFly = 85,
+    //     PlayerFlyCrossbow = 86,
+    //     ActionUnknown87 = 87,
+    //     ActionUnknown88 = 88,
+    //     ActionUnknown89 = 89,
+    //     ActionUnknown90 = 90,
+    //     ActionUnknown91 = 91,
+    //     PlayerRunRideHorse = 92,
+    //     ActionUnknown93 = 93,
+    //     ActionUnknown94 = 94,
+    //     ActionUnknown95 = 95,
+    //     ActionUnknown96 = 96,
+    //     ActionUnknown97 = 97,
+    //     ActionUnknown98 = 98,
+    //     ActionUnknown99 = 99,
+    //     ActionUnknown100 = 100,
+    //     ActionUnknown101 = 101,
+    //     ActionUnknown102 = 102,
+    //     ActionUnknown103 = 103,
+    //     ActionUnknown104 = 104,
+    //     ActionUnknown105 = 105,
+    //     ActionUnknown106 = 106,
+    //     PlayerAttackFist = 107,
+    //     ActionUnknown108 = 108,
+    //     PlayerAttackSwordRight1 = 109,
+    //     PlayerAttackSwordRight2 = 110,
+    //     PlayerAttackSwordLeft1 = 111,
+    //     PlayerAttackSwordLeft2 = 112,
+    //     PlayerAttackTwoHandSword1 = 113,
+    //     ActionUnknown114 = 114,
+    //     ActionUnknown115 = 115,
+    //     PlayerFenrirAttackBow = 116,
+    //     PlayerAttackSpear1 = 117,
+    //     ActionUnknown118 = 118,
+    //     PlayerAttackScythe1 = 119,
+    //     PlayerAttackScythe2 = 120,
+    //     PlayerAttackScythe3 = 121,
+    //     PlayerAttackBow = 122,
+    //     PlayerAttackCrossbow = 123,
+    //     PlayerAttackFlyBow = 124,
+    //     PlayerAttackFlyCrossbow = 125,
+    //     ActionUnknown126 = 126,
+    //     ActionUnknown127 = 127,
+    //     ActionUnknown128 = 128,
+    //     ActionUnknown129 = 129,
+    //     ActionUnknown130 = 130,
+    //     ActionUnknown131 = 131,
+    //     ActionUnknown132 = 132,
+    //     PlayerAttackSkillSword1 = 133,
+    //     ActionUnknown134 = 134,
+    //     PlayerAttackRideTwoHandSword = 135,
+    //     PlayerAttackRideSpear = 136,
+    //     TwistingSlashSkill = 137, // Skill (Twisting Slash)
+    //     RegularBlowSkill = 138, // Skill (Melee Blow?) - Uppercut/Cyclone? (154?)
+    //     ActionUnknown139 = 139,
+    //     ActionUnknown140 = 140,
+    //     ActionUnknown141 = 141,
+    //     PlayerAttackRideCrossbow = 142,
+    //     ActionUnknown143 = 143,
+    //     PlayerAttackSkillSword3 = 144,
+    //     ActionUnknown145 = 145,
+    //     PlayerAttackSkillSword5 = 146,
+    //     PlayerAttackSkillWheel = 147,
+    //     PlayerAttackSkillFuryStrike = 148,
+    //     GreaterFortitudeSkill = 149, // Skill (Greater Fortitude/Swell Life) (152?)
+    //     ActionUnknown150 = 150,
+    //     PlayerSkillRideFly = 151, // Skill (Flying Riding)
+    //     PlayerRideSkill = 152,
+    //     PlayerAttackSkillSpear = 153,
+    //     PlayerAttackDeathstab = 154,
+    //     PlayerSkillHellBegin = 155, // Skill (Hellfire Begin?)
+    //     PlayerSkillHellStart = 156, // Skill (Hellfire Start?)
+    //     ActionUnknown157 = 157,
+    //     PlayerSkillHand1 = 158, // Skill (Hand 1 - Magic?)
+    //     PlayerSkillHand2 = 159, // Skill (Hand 2 - Magic?)
+    //     PlayerSkillAttUpOurforces = 160,
+    //     ActionUnknown161 = 161,
+    //     PlayerSkillElf1 = 162, // Skill (Elf 1)
+    //     PlayerSkillTeleport = 163, // Skill (Teleport)
+    //     PlayerSkillFlash = 164, // Skill (Flash / Mass Teleport?)
+    //     PlayerSkillInferno = 165, // Skill (Inferno)
+    //     ActionUnknown166 = 166,
+    //     PlayerSkillHell = 167, // Skill (Hellfire Cast?)
+    //     PlayerSkillHpUpOurforces = 168,
+    //     ActionUnknown169 = 169,
+    //     ActionUnknown170 = 170,
+    //     ActionUnknown171 = 171,
+    //     ActionUnknown172 = 172,
+    //     ActionUnknown173 = 173,
+    //     PlayerSkillBlowOfDestruction = 174,
+    //     ActionUnknown175 = 175,
+    //     PlayerSkillSwellOfMp = 176, // Also known as Swell of Magic Power
+    //     PlayerSkillMultishotBowStand = 177,
+    //     PlayerSkillMultishotBowFlying = 178,
+    //     PlayerSkillMultishotCrossbowStand = 179,
+    //     PlayerSkillMultishotCrossbowFlying = 180,
+    //     PlayerSkillRecovery = 181,
+    //     PlayerSkillGiganticstorm = 182,
+    //     PlayerSkillFlamestrike = 183,
+    //     PlayerSkillLightningShock = 184,
+    //     ActionUnknown185 = 185,
+    //     ActionUnknown186 = 186,
+    //     ActionUnknown187 = 187,
+    //     ActionUnknown188 = 188,
+    //     ActionUnknown189 = 189,
+    //     ActionUnknown190 = 190,
+    //     ActionUnknown191 = 191,
+    //     ActionUnknown192 = 192,
+    //     ActionUnknown193 = 193,
+    //     ActionUnknown194 = 194,
+    //     ActionUnknown195 = 195,
+    //     ActionUnknown196 = 196,
+    //     ActionUnknown197 = 197,
+    //     ActionUnknown198 = 198,
+    //     ActionUnknown199 = 199,
+    //     ActionUnknown200 = 200,
+    //     ActionUnknown201 = 201,
+    //     ActionUnknown202 = 202,
+    //     ActionUnknown203 = 203,
+    //     ActionUnknown204 = 204,
+    //     ActionUnknown205 = 205,
+    //     ActionUnknown206 = 206,
+    //     ActionUnknown207 = 207,
+    //     ActionUnknown208 = 208,
+    //     PlayerRunRide = 209,
+    //     ActionUnknown210 = 210,
+    //     PlayerAwkward1 = 211,
+    //     ActionUnknown212 = 212, // Get Hit / Shock
+    //     ActionUnknown213 = 213,
+    //     ActionUnknown214 = 214,
+    //     PlayerSit1 = 215,
+    //     PlayerSit2 = 216,
+    //     PlayerSkillDarksideReady = 217,
+    //     PlayerSkillDarksideAttack = 218,
+    //     PlayerSkillDragonkick = 219,
+    //     PlayerSkillDragonlore = 220,
+    //     PlayerSkillPhoenixShot = 221,
+    //     ActionUnknown222 = 222,
+    //     ActionUnknown223 = 223,
+    //     ActionUnknown224 = 224,
+    //     ActionUnknown225 = 225,
+    //     ActionUnknown226 = 226,
+    //     ActionUnknown227 = 227,
+    //     ActionUnknown228 = 228,
+    //     ActionUnknown229 = 229,
+    //     ActionUnknown230 = 230,
+    //     ActionUnknown231 = 231,
+    //     ActionUnknown232 = 232,
+    //     ActionUnknown233 = 233,
+    //     ActionUnknown234 = 234,
+    //     ActionUnknown235 = 235,
+    //     ActionUnknown236 = 236,
+    //     ActionUnknown237 = 237,
+    //     ActionUnknown238 = 238,
+    //     ActionUnknown239 = 239,
+    //     ActionUnknown240 = 240,
+    //     ActionUnknown241 = 241,
+    //     ActionUnknown242 = 242,
+    //     ActionUnknown243 = 243,
+    //     ActionUnknown244 = 244,
+    //     ActionUnknown245 = 245,
+    //     ActionUnknown246 = 246,
+    //     ActionUnknown247 = 247,
+    //     ActionUnknown248 = 248,
+    //     ActionUnknown249 = 249,
+    //     ActionUnknown250 = 250,
+    //     ActionUnknown251 = 251,
+    //     ActionUnknown252 = 252,
+    //     ActionUnknown253 = 253,
+    //     ActionUnknown254 = 254,
+    //     ActionUnknown255 = 255,
+    //     ActionUnknown256 = 256,
+    //     ActionUnknown257 = 257,
+    //     ActionUnknown258 = 258,
+    //     ActionUnknown259 = 259,
+    //     ActionUnknown260 = 260,
+    //     ActionUnknown261 = 261,
+    //     ActionUnknown262 = 262,
+    //     ActionUnknown263 = 263,
+    //     ActionUnknown264 = 264,
+    //     ActionUnknown265 = 265,
+    //     ActionUnknown266 = 266,
+    //     PlayerSkillWeapon1 = 267,
+    //     ActionUnknown268 = 268,
+    //     ActionUnknown269 = 269,
+    //     ActionUnknown270 = 270,
+    //     ActionUnknown271 = 271,
+    //     ActionUnknown272 = 272,
+    //     ActionUnknown273 = 273,
+    //     ActionUnknown274 = 274,
+    //     ActionUnknown275 = 275,
+    //     ActionUnknown276 = 276,
+    //     ActionUnknown277 = 277,
+    //     ActionUnknown278 = 278,
+    //     ActionUnknown279 = 279,
+    //     ActionUnknown280 = 280,
+    //     ActionUnknown281 = 281,
+    //     ActionUnknown282 = 282,
+    //     ActionUnknown283 = 283,
+    //     ActionUnknown284 = 284,
+    //     ActionUnknown285 = 285,
+    //     ActionUnknown286 = 286,
+    //     ActionUnknown287 = 287,
+    //     ActionUnknown288 = 288,
+    //     ActionUnknown289 = 289,
+    //     ActionUnknown290 = 290,
+    //     ActionUnknown291 = 291,
+    //     ActionUnknown292 = 292,
+    //     ActionUnknown293 = 293,
+    //     ActionUnknown294 = 294,
+    //     ActionUnknown295 = 295,
+    //     ActionUnknown296 = 296,
+    //     PlayerStopRide = 297, // Fenrir/Horse/Uniria
+    //     ActionUnknown298 = 298, // Get up from ground?
+    //     ActionUnknown299 = 299,
+    //     ActionUnknown300 = 300,
+    //     ActionUnknown301 = 301,
+    //     ActionUnknown302 = 302,
+    //     ActionUnknown303 = 303,
+    //     ActionUnknown304 = 304,
+    //     ActionUnknown305 = 305,
+    //     ActionUnknown306 = 306,
+    //     ActionUnknown307 = 307,
+    //     ActionUnknown308 = 308,
+    //     ActionUnknown309 = 309,
+    //     ActionUnknown310 = 310,
+    //     ActionUnknown311 = 311,
+    //     ActionUnknown312 = 312,
+    //     ActionUnknown313 = 313,
+    //     PlayerDie1 = 314, // Die 1
+    //     PlayerDie2 = 315, // Die 2
+    //     PlayerDie3 = 316, // Die 3
+    //     PlayerDie4 = 317, // Die 4
+    //     PlayerGreeting1 = 318,
+    //     PlayerGreetingFemale1 = 319,
+    //     PlayerGoodbye1 = 320,
+    //     PlayerGoodbyeFemale1 = 321,
+    //     PlayerClap1 = 322,
+    //     PlayerClapFemale1 = 323,
+    //     PlayerCheer1 = 324,
+    //     PlayerCheerFemale1 = 325,
+    //     PlayerDirection1 = 326,
+    //     PlayerDirectionFemale1 = 327,
+    //     PlayerGesture1 = 328,
+    //     PlayerGestureFemale1 = 329,
+    //     PlayerUnknown1 = 330, // Shrug?
+    //     PlayerRespect1 = 331,
+    //     PlayerCry1 = 332,
+    //     PlayerCryFemale1 = 333,
+    //     PlayerDefense1 = 334,
+    //     PlayerAwkwardFemale1 = 335,
+    //     PlayerSee1 = 336, // Look around?
+    //     PlayerSeeFemale1 = 337,
+    //     PlayerWin1 = 338,
+    //     PlayerWinFemale1 = 339,
+    //     PlayerSmile1 = 340,
+    //     PlayerSmileFemale1 = 341,
+    //     PlayerSleep1 = 342,
+    //     PlayerSleepFemale1 = 343,
+    //     PlayerCold1 = 344,
+    //     PlayerColdFemale1 = 345,
+    //     PlayerAgain1 = 346, // Come on?
+    //     PlayerComeUp = 347,
+    //     PlayerShock = 348,
+    //     PlayerSalute1 = 349,
+    //     PlayerScissors = 350,
+    //     PlayerRock = 351,
+    //     PlayerPaper = 352,
+    //     PlayerHustle = 353, // Dance?
+    //     PlayerProvocation = 354,
+    //     PlayerLookAround = 355,
+    //     PlayerCheers = 356,
+    //     PlayerKoreaHandclap = 357, // Dance?
+    //     PlayerPointDance = 358,
+    //     PlayerRush1 = 359, // Charge?
+    //     PlayerSitFemale1 = 360,
+    //     PlayerSitFemale2 = 361,
+    //     ActionUnknown362 = 362,
+    //     ActionUnknown363 = 363,
+    //     ActionUnknown364 = 364,
+    //     PlayerHealing1 = 365,
+    //     PlayerHealingFemale1 = 366,
+    //     PlayerPose1 = 367,
+    //     PlayerPoseFemale1 = 368,
+    //     PlayerPoseMale1 = 369,
+    //     ActionUnknown370 = 370,
+    //     ActionUnknown371 = 371,
+    //     ActionUnknown372 = 372,
+    //     PlayerJack1 = 373, // Jack O'Lantern Emote 1
+    //     PlayerJack2 = 374, // Jack O'Lantern Emote 2
+    //     PlayerSanta1 = 375, // Santa Emote 1
+    //     PlayerSanta2 = 376, // Santa Emote 2
+    //     PlayerChangeUp = 377, // 3rd Class Change Up Effect?
+    //     PlayerRecoverSkill = 378, // Skill Recovery?
+    //     MaxPlayerAction = 379,
+    // }
+
     public enum PlayerAction
     {
-        Set, // 0
-
-        StopMale = 1,
-        StopFemale = 2,
-        StopSummoner = 3,
-        StopSword = 9,
-        StopTwoHandSword = 10,
-        StopSpear = 11,
-        StopScythe = 12,
-        StopBow = 13,
-        StopCrossbow = 14,
-        StopWand = 16,
-        // StopArm1 = 16, // Scepter?
-        // StopArm2 = 12, // Shield?
-        // StopArm3 = 13, // Armed Alt?
-        // 14-16 missing
-        StopFlying = 17,
-        StopFlying2 = 18,
-        StopFlyCrossbow = 19,
-        StopRide = 35, // Fenrir/Horse/Uniria
-        StopRideWeapon = 36,
-        // PlayerDefense1 = 48, // Defense / Block
-
-        // 22-37 missing (likely other skills/emotes)
-        AttackFist = 107,
-
-        // 39 missing
-        PlayerAttackSwordRight1 = 40, // Attack (1H Sword Right 1)
-        PlayerAttackSwordRight2 = 41, // Attack (1H Sword Right 2) - Possibly Wheel skill?
-        PlayerAttackSwordLeft1 = 42,  // Attack (1H Sword Left 1) - Possibly Fury Strike?
-        PlayerAttackSwordLeft2 = 43,  // Attack (1H Sword Left 2) - Possibly Death Stab?
-        PlayerAttackTwoHandSword1 = 44, // Attack (2H Sword 1) - Possibly Rush?
-        PlayerAttackTwoHandSword2 = 45, // Attack (2H Sword 2) - Possibly Javelin?
-        PlayerAttackTwoHandSword3 = 46, // Attack (2H Sword 3) - Possibly Deep Impact?
-
-        WalkMale = 47,
-        WalkFemale = 48,
-        WalkSword = 49,
-        WalkTwoHandSword = 50,
-        WalkSpear = 51,
-        WalkScythe = 52,
-        WalkBow = 53,
-        WalkCrossbow = 54,
-        WalkWand = 55,
-        // 56 missing
-        PlayerSkillVitality = 57, // Skill (Vitality / Inner Strength?)
-        WalkSwim = 58,
-
-        Run = 75,
-        RunSword = 76,
-        RunTwoSword = 77,
-        RunTwoHandSword = 78,
-        RunSpear = 79,
-        RunBow = 80,
-        RunCrossbow = 81,
-        RunWand = 83,
-        // 67-83 missing
-
-        RunSwim = 84,
-
-        Fly = 85,
-        FlyCrossbow = 86,
-
-        RunRide = 87,
-        RunRideWeapon = 88,
-
-        PlayerFlyRide = 89, // Fly (Riding)
-        PlayerFlyRideWeapon = 90, // Fly (Riding with Weapon)
-
-        PlayerDarklordStand = 91, // Stop/Idle (Dark Lord)
-        PlayerDarklordWalk = 92,  // Walk (Dark Lord)
-        PlayerStopRideHorse = 93, // Stop/Idle (Riding Horse) - Może być to samo co StopRide
-        PlayerRunRideHorse = 94,  // Run (Riding Horse) - Może być to samo co RunRide
-
-        PlayerAttackStrike = 95, // Attack (Strike - DL?)
-        PlayerAttackTeleport = 96, // Attack (Teleport - DW?)
-        PlayerAttackRideStrike = 97, // Attack (Riding Strike - DL?)
-        PlayerAttackRideTeleport = 98, // Attack (Riding Teleport - DW?)
-        PlayerAttackRideHorseSword = 99, // Attack (Riding Horse with Sword)
-        PlayerAttackRideAttackFlash = 100, // Attack (Riding Flash - MG?)
-        PlayerAttackRideAttackMagic = 101, // Attack (Riding Magic - DW/Elf?)
-        PlayerAttackDarkhorse = 102, // Attack (Dark Horse Pet)
-        PlayerIdle1Darkhorse = 103, // Idle 1 (Dark Horse Pet)
-        PlayerIdle2Darkhorse = 104, // Idle 2 (Dark Horse Pet)
-
-        PlayerFenrirAttack = 105, // Attack (Fenrir - Basic?)
-        PlayerFenrirAttackDarklordAqua = 106, // Attack (Fenrir - DL Aqua Beam?)
-        // PlayerFenrirAttackDarklordStrike = 107, // Attack (Fenrir - DL Strike?)
-        PlayerFenrirAttackDarklordSword = 108, // Attack (Fenrir - DL Sword?)
-        PlayerFenrirAttackDarklordTeleport = 109, // Attack (Fenrir - DL Teleport?)
-        PlayerFenrirAttackDarklordFlash = 110, // Attack (Fenrir - DL Flash?)
-        PlayerFenrirAttackTwoSword = 111, // Attack (Fenrir - Dual Wield?)
-        PlayerFenrirAttackMagic = 112, // Attack (Fenrir - Magic?)
-        PlayerFenrirAttackCrossbow = 113, // Attack (Fenrir - Crossbow?)
-        PlayerFenrirAttackSpear = 114, // Attack (Fenrir - Spear?)
-        PlayerFenrirAttackOneSword = 115, // Attack (Fenrir - 1H Sword?)
-        PlayerFenrirAttackBow = 116, // Attack (Fenrir - Bow?)
-        // PlayerFenrirSkill = 117, // Skill (Fenrir - Generic?)
-        // PlayerFenrirSkillTwoSword = 118, // Skill (Fenrir - Dual Wield?)
-        // PlayerFenrirSkillOneRight = 119, // Skill (Fenrir - 1H Right?)
-        // PlayerFenrirSkillOneLeft = 120, // Skill (Fenrir - 1H Left?)
-        // PlayerFenrirDamage = 121, // Get Hit (Fenrir)
-        // PlayerFenrirDamageTwoSword = 122, // Get Hit (Fenrir - Dual Wield?)
-        // PlayerFenrirDamageOneRight = 123, // Get Hit (Fenrir - 1H Right?)
-        // PlayerFenrirDamageOneLeft = 124, // Get Hit (Fenrir - 1H Left?)
-
-        // 125 missing
-
-        PlayerAttackSpear1 = 117, // Attack (Spear 1)
-        PlayerAttackScythe1 = 119, // Attack (Scythe 1)
-        PlayerAttackScythe2 = 120, // Attack (Scythe 2)
-        PlayerAttackScythe3 = 121, // Attack (Scythe 3)
-        PlayerAttackBow = 122, // Attack (Bow)
-        PlayerAttackCrossbow = 123, // Attack (Crossbow)
-        PlayerAttackFlyBow = 124, // Attack (Flying Bow)
-        PlayerAttackFlyCrossbow = 125, // Attack (Flying Crossbow)
-
-        BlowSkill = 134, // Skill (Power Strike?)
-        PlayerAttackRideSword = 135, // Attack (Riding Sword)
-        PlayerAttackRideTwoHandSword = 136, // Attack (Riding 2H Sword)
-        PlayerAttackRideSpear = 137, // Attack (Riding Spear)
-
-        TwistingSlashSkill = 138, // Skill (Twisting Slash)
-        RegularBlowSkill = 139, // Skill (Melee Blow?) - Uppercut/Cyclone? (154?)
-
-        PlayerAttackRideScythe = 140, // Attack (Riding Scythe)
-        PlayerAttackRideBow = 141, // Attack (Riding Bow)
-        PlayerAttackRideCrossbow = 142, // Attack (Riding Crossbow)
-
-        PlayerAttackSkillSword1 = 143, // Skill Attack (Sword 1)
-        PlayerAttackSkillSword2 = 144, // Skill Attack (Sword 2)
-        PlayerAttackSkillSword3 = 145, // Skill Attack (Sword 3)
-        PlayerAttackSkillSword4 = 146, // Skill Attack (Sword 4)
-        PlayerAttackSkillSword5 = 147, // Skill Attack (Sword 5)
-
-        PlayerAttackSkillWheel = 148, // Skill Attack (Wheel)
-        PlayerAttackSkillFuryStrike = 149, // Skill Attack (Fury Strike)
-        GreaterFortitudeSkill = 150, // Skill (Greater Fortitude/Swell Life) (152?)
-
-        PlayerSkillRide = 151, // Skill (Riding) - ogólne?
-        PlayerSkillRideFly = 152, // Skill (Flying Riding)
-
-        PlayerAttackSkillSpear = 153, // Skill Attack (Spear)
-        PlayerAttackDeathstab = 154, // Attack (Death Stab)
-        PlayerSkillHellBegin = 155, // Skill (Hellfire Begin?)
-        PlayerSkillHellStart = 156, // Skill (Hellfire Start?)
-
-        EvilSpiritSkill = 157, // Skill (Evil Spirits)
-        FlameSkill = 158, // Skill (Flame)
-
-        PlayerAttackOneFlash = 159, // Attack (One Flash - MG?)
-        PlayerAttackRush = 160, // Attack (Rush - DK?)
-        PlayerAttackDeathCannon = 161, // Attack (Death Cannon - MG?)
-        PlayerAttackRemoval = 162, // Attack (Removal - Elf?)
-        PlayerAttackStun = 163, // Attack (Stun - DK?)
-
-        // 164-179 missing (likely many skills)
-
-        PlayerSkillHand1 = 180, // Skill (Hand 1 - Magic?)
-        PlayerSkillHand2 = 181, // Skill (Hand 2 - Magic?)
-        PlayerSkillWeapon1 = 182, // Skill (Weapon 1)
-        PlayerSkillWeapon2 = 183, // Skill (Weapon 2)
-        PlayerSkillElf1 = 184, // Skill (Elf 1)
-        PlayerSkillTeleport = 185, // Skill (Teleport)
-        PlayerSkillFlash = 186, // Skill (Flash / Mass Teleport?)
-        PlayerSkillInferno = 187, // Skill (Inferno)
-        PlayerSkillHell = 188, // Skill (Hellfire Cast?)
-
-        // 189-199 missing
-
-        PlayerSkillSleep = 200,
-        PlayerSkillSleepUni = 201,
-        PlayerSkillSleepDino = 202,
-        PlayerSkillSleepFenrir = 203,
-        PlayerSkillChainLightning = 204,
-        PlayerSkillChainLightningUni = 205,
-        PlayerSkillChainLightningDino = 206,
-        PlayerSkillChainLightningFenrir = 207,
-        PlayerSkillLightningOrb = 208, // Lightning Shock?
-        PlayerSkillLightningOrbUni = 209,
-        PlayerSkillLightningOrbDino = 210,
-        PlayerSkillLightningOrbFenrir = 211,
-        PlayerSkillDrainLife = 212,
-        PlayerSkillDrainLifeUni = 213,
-        PlayerSkillDrainLifeDino = 214,
-        PlayerSkillDrainLifeFenrir = 215,
-        PlayerSkillSummon = 216,
-        PlayerSkillSummonUni = 217,
-        PlayerSkillSummonDino = 218,
-        PlayerSkillSummonFenrir = 219,
-
-        // 220-231 missing
-        PlayerSkillBlowOfDestruction = 232,
-        PlayerSkillSwellOfMagicPower = 233, // Swell Life / Greater Fortitude?
-        PlayerSkillMultishotBowStand = 234, // Multi-Shot (Bow, Standing)
-        PlayerSkillMultishotBowFlying = 235, // Multi-Shot (Bow, Flying)
-        PlayerSkillMultishotCrossbowStand = 236, // Multi-Shot (Crossbow, Standing)
-        PlayerSkillMultishotCrossbowFlying = 237, // Multi-Shot (Crossbow, Flying)
-        PlayerSkillRecovery = 238, // Recovery / Heal?
-        PlayerSkillGiganticstorm = 239, // Gigantic Storm
-        PlayerSkillFlamestrike = 240, // Flame Strike
-        PlayerSkillLightningShock = 241, // Lightning Shock
-
-        // 242-259 missing
-        PlayerSkillThrust = 260, // Thrust (Rage Fighter)
-        PlayerSkillStamp = 261, // Stomp / Earthshake (Rage Fighter)
-        PlayerSkillGiantswing = 262, // Giant Swing (Rage Fighter)
-        PlayerSkillDarksideReady = 263, // Dark Side Ready (Rage Fighter)
-        PlayerSkillDarksideAttack = 264, // Dark Side Attack (Rage Fighter)
-        PlayerSkillDragonLore = 265, // Dragon Lore (Rage Fighter)
-        PlayerSkillDragonKick = 266, // Dragon Kick (Rage Fighter)
-        PlayerSkillAttUpOurforces = 267, // Increase Attack Power (Rage Fighter Buff)
-        PlayerSkillHpUpOurforces = 268, // Increase Health (Rage Fighter Buff)
-        PlayerSkillDefUpOurforces = 269, // Increase Defense (Rage Fighter Buff)
-        PlayerSkillOccupy = 270, // Occupy? (Rage Fighter) - Może Phoenix Shot?
-        PlayerSkillPhoenixShot = 271, // Phoenix Shot (Rage Fighter)
-
-        // 272-300 missing (Emotes?)
-        PlayerGreeting1 = 301,
-        PlayerGreetingFemale1 = 302,
-        PlayerGoodbye1 = 303,
-        PlayerGoodbyeFemale1 = 304,
-        PlayerClap1 = 305,
-        PlayerClapFemale1 = 306,
-        PlayerCheer1 = 307,
-        PlayerCheerFemale1 = 308,
-        PlayerDirection1 = 309,
-        PlayerDirectionFemale1 = 310,
-        PlayerGesture1 = 311,
-        PlayerGestureFemale1 = 312,
-        PlayerUnknown1 = 313, // Shrug?
-        // PlayerUnknownFemale1 = 314, // Shrug?
-        // PlayerCry1 = 315,
-        // PlayerCryFemale1 = 316,
-        // PlayerAwkward1 = 317,
-        // PlayerAwkwardFemale1 = 318,
-        PlayerSee1 = 319, // Look around?
-        PlayerSeeFemale1 = 320, // Look around?
-        PlayerWin1 = 321,
-        PlayerWinFemale1 = 322,
-        PlayerSmile1 = 323,
-        PlayerSmileFemale1 = 324,
-        PlayerSleep1 = 325,
-        PlayerSleepFemale1 = 326,
-        PlayerCold1 = 327,
-        PlayerColdFemale1 = 328,
-        PlayerAgain1 = 329, // Come on?
-        PlayerAgainFemale1 = 330, // Come on?
-        PlayerRespect1 = 331,
-        PlayerSalute1 = 332,
-        PlayerScissors = 333,
-        PlayerRock = 334,
-        PlayerPaper = 335,
-        PlayerHustle = 336, // Dance?
-        PlayerProvocation = 337,
-        PlayerLookAround = 338,
-        PlayerCheers = 339,
-        PlayerKoreaHandclap = 340, // Dance?
-        PlayerPointDance = 341, // Dance?
-        PlayerRush1 = 342, // Charge?
-
-        // 343-346 missing
-        PlayerComeUp = 347, // Get up from ground?
-
-        PlayerShock = 348, // Get Hit / Shock 
-        PlayerDie1 = 314, // Die 1
-        PlayerDie2 = 315, // Die 2
-        PlayerDie3 = 316, // Die 3
-        PlayerDie4 = 317, // Die 4
-        PlayerDie5 = 318, // Die 5
-
-        PlayerSitFemale1 = 351, // Sit Female 1
-        PlayerSitFemale2 = 352, // Sit Female 2
-
-        PlayerHealing1 = 353, // Healing 1
-        PlayerHealingFemale1 = 354, // Healing Female 1
-        PlayerPose1 = 355, // Pose 1
-        PlayerPoseFemale1 = 356, // Pose Female 1
-
-        // 357-359 missing
-        PlayerSit1 = 360,
-        PlayerSit2 = 361,
-        PlayerSit3 = 362,
-        PlayerSit4 = 363,
-        PlayerSit5 = 364,
-        PlayerSit6 = 365,
-        // 366 missing
-        PlayerFlyingRest = 367,
-        // 368 missing
-        PlayerStandingRest = 369,
-
-        PlayerJack1 = 370, // Jack O'Lantern Emote 1
-        PlayerJack2 = 371, // Jack O'Lantern Emote 2
-        PlayerSanta1 = 372, // Santa Emote 1
-        PlayerSanta2 = 373, // Santa Emote 2
-        PlayerChangeUp = 374, // 3rd Class Change Up Effect?
-        PlayerRecoverSkill = 375, // Skill Recovery?
-
-        // 376-380 missing
-        PlayerSkillRide2 = 381, // Skill (Riding)
-        PlayerSkillRideFly2 = 382, // Skill (Flying Riding)
-
-        // 383-412 missing
-        PlayerStopArm1 = 413, // Stop/Idle (Armed Alt 1?)
-        PlayerStopArm2 = 414, // Stop/Idle (Armed Alt 2?)
-        PlayerStopArm3 = 415, // Stop/Idle (Armed Alt 3?)
-
-        // 416-421 missing
-        PlayerFenrirAttackMagic2 = 422, // Attack (Fenrir Magic?)
-        PlayerFenrirAttackCrossbow2 = 423, // Attack (Fenrir Crossbow?) 
-        PlayerFenrirAttackSpear2 = 424, // Attack (Fenrir Spear?)
-        PlayerFenrirAttackOneSword2 = 425, // Attack (Fenrir 1H Sword?)
-        PlayerFenrirAttackBow2 = 426, // Attack (Fenrir Bow?)
-
-        // 427-431 missing
-        PlayerFenrirRunMagom = 432, // Run (Fenrir - Magic User?)
-        PlayerFenrirRunTwoSwordMagom = 433, // Run (Fenrir - Magic User Dual Wield?)
-        PlayerFenrirRunOneRightMagom = 434, // Run (Fenrir - Magic User 1H Right?)
-        PlayerFenrirRunOneLeftMagom = 435, // Run (Fenrir - Magic User 1H Left?)
-        PlayerFenrirRunElf = 436, // Run (Fenrir - Elf?)
-        PlayerFenrirRunTwoSwordElf = 437, // Run (Fenrir - Elf Dual Wield?)
-        PlayerFenrirRunOneRightElf = 438, // Run (Fenrir - Elf 1H Right?)
-        PlayerFenrirRunOneLeftElf = 439, // Run (Fenrir - Elf 1H Left?)
-
-        // 440-458 missing
-        PlayerRageUniAttack = 459, // Attack (Unicorn - Rage Fighter?)
-        PlayerRageUniAttackOneRight = 460, // Attack (Unicorn - Rage Fighter 1H Right?)
-        PlayerRageUniRun = 461, // Run (Unicorn - Rage Fighter?)
-        PlayerRageUniRunOneRight = 462, // Run (Unicorn - Rage Fighter 1H Right?)
-        PlayerRageUniStopOneRight = 463, // Stop/Idle (Unicorn - Rage Fighter 1H Right?)
-        PlayerRageFenrir = 464, // Stop/Idle (Fenrir - Rage Fighter?)
-        PlayerRageFenrirTwoSword = 465, // Stop/Idle (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirOneRight = 466, // Stop/Idle (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirOneLeft = 467, // Stop/Idle (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirWalk = 468, // Walk (Fenrir - Rage Fighter?)
-        PlayerRageFenrirWalkOneRight = 469, // Walk (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirWalkOneLeft = 470, // Walk (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirWalkTwoSword = 471, // Walk (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirRun = 472, // Run (Fenrir - Rage Fighter?)
-        PlayerRageFenrirRunTwoSword = 473, // Run (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirRunOneRight = 474, // Run (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirRunOneLeft = 475, // Run (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirStand = 476, // Stand (Fenrir - Rage Fighter?) - To samo co Stop?
-        PlayerRageFenrirStandTwoSword = 477, // Stand (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirStandOneRight = 478, // Stand (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirStandOneLeft = 479, // Stand (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirDamage = 480, // Get Hit (Fenrir - Rage Fighter?)
-        PlayerRageFenrirDamageTwoSword = 481, // Get Hit (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirDamageOneRight = 482, // Get Hit (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirDamageOneLeft = 483, // Get Hit (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirAttackRight = 484, // Attack (Fenrir - Rage Fighter Right?)
-        PlayerStopRagefighter = 485, // Stop/Idle (Rage Fighter)
-    }
-
-    public enum PlayerActionS6
-    {
-        Set, // 0
-
-        StopMale = 1,
-        StopFemale = 2,
-        StopSummoner = 3,
-        StopSword = 4,
-        StopTwoHandSword = 5,
-        StopSpear = 6,
-        StopScythe = 7,
-        StopBow = 8,
-        StopCrossbow = 9,
-        StopWand = 10,
-        StopArm1 = 11, // Scepter?
-        StopArm2 = 12, // Shield?
-        StopArm3 = 13, // Armed Alt?
-        // 14-16 missing
-        StopFlying = 17,
-        StopFlyCrossbow = 18,
-        StopRide = 19, // Fenrir/Horse/Uniria
-        StopRideWeapon = 20,
-        PlayerDefense1 = 21, // Defense / Block
-
-        // 22-37 missing (likely other skills/emotes)
-        AttackFist = 38,
-
-        // 39 missing
-        PlayerAttackSwordRight1 = 40, // Attack (1H Sword Right 1)
-        PlayerAttackSwordRight2 = 41, // Attack (1H Sword Right 2) - Possibly Wheel skill?
-        PlayerAttackSwordLeft1 = 42,  // Attack (1H Sword Left 1) - Possibly Fury Strike?
-        PlayerAttackSwordLeft2 = 43,  // Attack (1H Sword Left 2) - Possibly Death Stab?
-        PlayerAttackTwoHandSword1 = 44, // Attack (2H Sword 1) - Possibly Rush?
-        PlayerAttackTwoHandSword2 = 45, // Attack (2H Sword 2) - Possibly Javelin?
-        PlayerAttackTwoHandSword3 = 46, // Attack (2H Sword 3) - Possibly Deep Impact?
-
-        WalkMale = 47,
-        WalkFemale = 48,
-        WalkSword = 49,
-        WalkTwoHandSword = 50,
-        WalkSpear = 51,
-        WalkScythe = 52,
-        WalkBow = 53,
-        WalkCrossbow = 54,
-        WalkWand = 55,
-        // 56 missing
-        PlayerSkillVitality = 57, // Skill (Vitality / Inner Strength?)
-        WalkSwim = 58,
-
-        Run = 59,
-        RunSword = 60,
-        RunTwoSword = 61,
-        RunTwoHandSword = 62,
-        RunSpear = 63,
-        RunBow = 64,
-        RunCrossbow = 65,
-        RunWand = 66,
-        // 67-83 missing
-
-        RunSwim = 84,
-
-        Fly = 85,
-        FlyCrossbow = 86,
-
-        RunRide = 87,
-        RunRideWeapon = 88,
-
-        PlayerFlyRide = 89, // Fly (Riding)
-        PlayerFlyRideWeapon = 90, // Fly (Riding with Weapon)
-
-        PlayerDarklordStand = 91, // Stop/Idle (Dark Lord)
-        PlayerDarklordWalk = 92,  // Walk (Dark Lord)
-        PlayerStopRideHorse = 93, // Stop/Idle (Riding Horse) - Może być to samo co StopRide
-        PlayerRunRideHorse = 94,  // Run (Riding Horse) - Może być to samo co RunRide
-
-        PlayerAttackStrike = 95, // Attack (Strike - DL?)
-        PlayerAttackTeleport = 96, // Attack (Teleport - DW?)
-        PlayerAttackRideStrike = 97, // Attack (Riding Strike - DL?)
-        PlayerAttackRideTeleport = 98, // Attack (Riding Teleport - DW?)
-        PlayerAttackRideHorseSword = 99, // Attack (Riding Horse with Sword)
-        PlayerAttackRideAttackFlash = 100, // Attack (Riding Flash - MG?)
-        PlayerAttackRideAttackMagic = 101, // Attack (Riding Magic - DW/Elf?)
-        PlayerAttackDarkhorse = 102, // Attack (Dark Horse Pet)
-        PlayerIdle1Darkhorse = 103, // Idle 1 (Dark Horse Pet)
-        PlayerIdle2Darkhorse = 104, // Idle 2 (Dark Horse Pet)
-
-        PlayerFenrirAttack = 105, // Attack (Fenrir - Basic?)
-        PlayerFenrirAttackDarklordAqua = 106, // Attack (Fenrir - DL Aqua Beam?)
-        PlayerFenrirAttackDarklordStrike = 107, // Attack (Fenrir - DL Strike?)
-        PlayerFenrirAttackDarklordSword = 108, // Attack (Fenrir - DL Sword?)
-        PlayerFenrirAttackDarklordTeleport = 109, // Attack (Fenrir - DL Teleport?)
-        PlayerFenrirAttackDarklordFlash = 110, // Attack (Fenrir - DL Flash?)
-        PlayerFenrirAttackTwoSword = 111, // Attack (Fenrir - Dual Wield?)
-        PlayerFenrirAttackMagic = 112, // Attack (Fenrir - Magic?)
-        PlayerFenrirAttackCrossbow = 113, // Attack (Fenrir - Crossbow?)
-        PlayerFenrirAttackSpear = 114, // Attack (Fenrir - Spear?)
-        PlayerFenrirAttackOneSword = 115, // Attack (Fenrir - 1H Sword?)
-        PlayerFenrirAttackBow = 116, // Attack (Fenrir - Bow?)
-        PlayerFenrirSkill = 117, // Skill (Fenrir - Generic?)
-        PlayerFenrirSkillTwoSword = 118, // Skill (Fenrir - Dual Wield?)
-        PlayerFenrirSkillOneRight = 119, // Skill (Fenrir - 1H Right?)
-        PlayerFenrirSkillOneLeft = 120, // Skill (Fenrir - 1H Left?)
-        PlayerFenrirDamage = 121, // Get Hit (Fenrir)
-        PlayerFenrirDamageTwoSword = 122, // Get Hit (Fenrir - Dual Wield?)
-        PlayerFenrirDamageOneRight = 123, // Get Hit (Fenrir - 1H Right?)
-        PlayerFenrirDamageOneLeft = 124, // Get Hit (Fenrir - 1H Left?)
-
-        // 125 missing
-
-        PlayerAttackSpear1 = 126, // Attack (Spear 1)
-        PlayerAttackScythe1 = 127, // Attack (Scythe 1)
-        PlayerAttackScythe2 = 128, // Attack (Scythe 2)
-        PlayerAttackScythe3 = 129, // Attack (Scythe 3)
-        PlayerAttackBow = 130, // Attack (Bow)
-        PlayerAttackCrossbow = 131, // Attack (Crossbow)
-        PlayerAttackFlyBow = 132, // Attack (Flying Bow)
-        PlayerAttackFlyCrossbow = 133, // Attack (Flying Crossbow)
-
-        BlowSkill = 134, // Skill (Power Strike?)
-        PlayerAttackRideSword = 135, // Attack (Riding Sword)
-        PlayerAttackRideTwoHandSword = 136, // Attack (Riding 2H Sword)
-        PlayerAttackRideSpear = 137, // Attack (Riding Spear)
-
-        TwistingSlashSkill = 138, // Skill (Twisting Slash)
-        RegularBlowSkill = 139, // Skill (Melee Blow?) - Uppercut/Cyclone? (154?)
-
-        PlayerAttackRideScythe = 140, // Attack (Riding Scythe)
-        PlayerAttackRideBow = 141, // Attack (Riding Bow)
-        PlayerAttackRideCrossbow = 142, // Attack (Riding Crossbow)
-
-        PlayerAttackSkillSword1 = 143, // Skill Attack (Sword 1)
-        PlayerAttackSkillSword2 = 144, // Skill Attack (Sword 2)
-        PlayerAttackSkillSword3 = 145, // Skill Attack (Sword 3)
-        PlayerAttackSkillSword4 = 146, // Skill Attack (Sword 4)
-        PlayerAttackSkillSword5 = 147, // Skill Attack (Sword 5)
-
-        PlayerAttackSkillWheel = 148, // Skill Attack (Wheel)
-        PlayerAttackSkillFuryStrike = 149, // Skill Attack (Fury Strike)
-        GreaterFortitudeSkill = 150, // Skill (Greater Fortitude/Swell Life) (152?)
-
-        PlayerSkillRide = 151, // Skill (Riding) - ogólne?
-        PlayerSkillRideFly = 152, // Skill (Flying Riding)
-
-        PlayerAttackSkillSpear = 153, // Skill Attack (Spear)
-        PlayerAttackDeathstab = 154, // Attack (Death Stab)
-        PlayerSkillHellBegin = 155, // Skill (Hellfire Begin?)
-        PlayerSkillHellStart = 156, // Skill (Hellfire Start?)
-
-        EvilSpiritSkill = 157, // Skill (Evil Spirits)
-        FlameSkill = 158, // Skill (Flame)
-
-        PlayerAttackOneFlash = 159, // Attack (One Flash - MG?)
-        PlayerAttackRush = 160, // Attack (Rush - DK?)
-        PlayerAttackDeathCannon = 161, // Attack (Death Cannon - MG?)
-        PlayerAttackRemoval = 162, // Attack (Removal - Elf?)
-        PlayerAttackStun = 163, // Attack (Stun - DK?)
-
-        // 164-179 missing (likely many skills)
-
-        PlayerSkillHand1 = 180, // Skill (Hand 1 - Magic?)
-        PlayerSkillHand2 = 181, // Skill (Hand 2 - Magic?)
-        PlayerSkillWeapon1 = 182, // Skill (Weapon 1)
-        PlayerSkillWeapon2 = 183, // Skill (Weapon 2)
-        PlayerSkillElf1 = 184, // Skill (Elf 1)
-        PlayerSkillTeleport = 185, // Skill (Teleport)
-        PlayerSkillFlash = 186, // Skill (Flash / Mass Teleport?)
-        PlayerSkillInferno = 187, // Skill (Inferno)
-        PlayerSkillHell = 188, // Skill (Hellfire Cast?)
-
-        // 189-199 missing
-
-        PlayerSkillSleep = 200,
-        PlayerSkillSleepUni = 201,
-        PlayerSkillSleepDino = 202,
-        PlayerSkillSleepFenrir = 203,
-        PlayerSkillChainLightning = 204,
-        PlayerSkillChainLightningUni = 205,
-        PlayerSkillChainLightningDino = 206,
-        PlayerSkillChainLightningFenrir = 207,
-        PlayerSkillLightningOrb = 208, // Lightning Shock?
-        PlayerSkillLightningOrbUni = 209,
-        PlayerSkillLightningOrbDino = 210,
-        PlayerSkillLightningOrbFenrir = 211,
-        PlayerSkillDrainLife = 212,
-        PlayerSkillDrainLifeUni = 213,
-        PlayerSkillDrainLifeDino = 214,
-        PlayerSkillDrainLifeFenrir = 215,
-        PlayerSkillSummon = 216,
-        PlayerSkillSummonUni = 217,
-        PlayerSkillSummonDino = 218,
-        PlayerSkillSummonFenrir = 219,
-
-        // 220-231 missing
-        PlayerSkillBlowOfDestruction = 232,
-        PlayerSkillSwellOfMagicPower = 233, // Swell Life / Greater Fortitude?
-        PlayerSkillMultishotBowStand = 234, // Multi-Shot (Bow, Standing)
-        PlayerSkillMultishotBowFlying = 235, // Multi-Shot (Bow, Flying)
-        PlayerSkillMultishotCrossbowStand = 236, // Multi-Shot (Crossbow, Standing)
-        PlayerSkillMultishotCrossbowFlying = 237, // Multi-Shot (Crossbow, Flying)
-        PlayerSkillRecovery = 238, // Recovery / Heal?
-        PlayerSkillGiganticstorm = 239, // Gigantic Storm
-        PlayerSkillFlamestrike = 240, // Flame Strike
-        PlayerSkillLightningShock = 241, // Lightning Shock
-
-        // 242-259 missing
-        PlayerSkillThrust = 260, // Thrust (Rage Fighter)
-        PlayerSkillStamp = 261, // Stomp / Earthshake (Rage Fighter)
-        PlayerSkillGiantswing = 262, // Giant Swing (Rage Fighter)
-        PlayerSkillDarksideReady = 263, // Dark Side Ready (Rage Fighter)
-        PlayerSkillDarksideAttack = 264, // Dark Side Attack (Rage Fighter)
-        PlayerSkillDragonLore = 265, // Dragon Lore (Rage Fighter)
-        PlayerSkillDragonKick = 266, // Dragon Kick (Rage Fighter)
-        PlayerSkillAttUpOurforces = 267, // Increase Attack Power (Rage Fighter Buff)
-        PlayerSkillHpUpOurforces = 268, // Increase Health (Rage Fighter Buff)
-        PlayerSkillDefUpOurforces = 269, // Increase Defense (Rage Fighter Buff)
-        PlayerSkillOccupy = 270, // Occupy? (Rage Fighter) - Może Phoenix Shot?
-        PlayerSkillPhoenixShot = 271, // Phoenix Shot (Rage Fighter)
-
-        // 272-300 missing (Emotes?)
-        PlayerGreeting1 = 301,
-        PlayerGreetingFemale1 = 302,
-        PlayerGoodbye1 = 303,
-        PlayerGoodbyeFemale1 = 304,
-        PlayerClap1 = 305,
-        PlayerClapFemale1 = 306,
-        PlayerCheer1 = 307,
-        PlayerCheerFemale1 = 308,
-        PlayerDirection1 = 309,
-        PlayerDirectionFemale1 = 310,
-        PlayerGesture1 = 311,
-        PlayerGestureFemale1 = 312,
-        PlayerUnknown1 = 313, // Shrug?
-        PlayerUnknownFemale1 = 314, // Shrug?
-        PlayerCry1 = 315,
-        PlayerCryFemale1 = 316,
-        PlayerAwkward1 = 317,
-        PlayerAwkwardFemale1 = 318,
-        PlayerSee1 = 319, // Look around?
-        PlayerSeeFemale1 = 320, // Look around?
-        PlayerWin1 = 321,
-        PlayerWinFemale1 = 322,
-        PlayerSmile1 = 323,
-        PlayerSmileFemale1 = 324,
-        PlayerSleep1 = 325,
-        PlayerSleepFemale1 = 326,
-        PlayerCold1 = 327,
-        PlayerColdFemale1 = 328,
-        PlayerAgain1 = 329, // Come on?
-        PlayerAgainFemale1 = 330, // Come on?
-        PlayerRespect1 = 331,
-        PlayerSalute1 = 332,
-        PlayerScissors = 333,
-        PlayerRock = 334,
-        PlayerPaper = 335,
-        PlayerHustle = 336, // Dance?
-        PlayerProvocation = 337,
-        PlayerLookAround = 338,
-        PlayerCheers = 339,
-        PlayerKoreaHandclap = 340, // Dance?
-        PlayerPointDance = 341, // Dance?
-        PlayerRush1 = 342, // Charge?
-
-        // 343-346 missing
-        PlayerComeUp = 347, // Get up from ground?
-
-        PlayerShock = 348, // Get Hit / Shock 
-        PlayerDie1 = 349, // Die 1
-        PlayerDie2 = 350, // Die 2
-
-        PlayerSitFemale1 = 351, // Sit Female 1
-        PlayerSitFemale2 = 352, // Sit Female 2
-
-        PlayerHealing1 = 353, // Healing 1
-        PlayerHealingFemale1 = 354, // Healing Female 1
-        PlayerPose1 = 355, // Pose 1
-        PlayerPoseFemale1 = 356, // Pose Female 1
-
-        // 357-359 missing
-        PlayerSit1 = 360,
-        PlayerSit2 = 361,
-        PlayerSit3 = 362,
-        PlayerSit4 = 363,
-        PlayerSit5 = 364,
-        PlayerSit6 = 365,
-        // 366 missing
-        PlayerFlyingRest = 367,
-        // 368 missing
-        PlayerStandingRest = 369,
-
-        PlayerJack1 = 370, // Jack O'Lantern Emote 1
-        PlayerJack2 = 371, // Jack O'Lantern Emote 2
-        PlayerSanta1 = 372, // Santa Emote 1
-        PlayerSanta2 = 373, // Santa Emote 2
-        PlayerChangeUp = 374, // 3rd Class Change Up Effect?
-        PlayerRecoverSkill = 375, // Skill Recovery?
-
-        // 376-380 missing
-        PlayerSkillRide2 = 381, // Skill (Riding)
-        PlayerSkillRideFly2 = 382, // Skill (Flying Riding)
-
-        // 383-412 missing
-        PlayerStopArm1 = 413, // Stop/Idle (Armed Alt 1?)
-        PlayerStopArm2 = 414, // Stop/Idle (Armed Alt 2?)
-        PlayerStopArm3 = 415, // Stop/Idle (Armed Alt 3?)
-
-        // 416-421 missing
-        PlayerFenrirAttackMagic2 = 422, // Attack (Fenrir Magic?)
-        PlayerFenrirAttackCrossbow2 = 423, // Attack (Fenrir Crossbow?) 
-        PlayerFenrirAttackSpear2 = 424, // Attack (Fenrir Spear?)
-        PlayerFenrirAttackOneSword2 = 425, // Attack (Fenrir 1H Sword?)
-        PlayerFenrirAttackBow2 = 426, // Attack (Fenrir Bow?)
-
-        // 427-431 missing
-        PlayerFenrirRunMagom = 432, // Run (Fenrir - Magic User?)
-        PlayerFenrirRunTwoSwordMagom = 433, // Run (Fenrir - Magic User Dual Wield?)
-        PlayerFenrirRunOneRightMagom = 434, // Run (Fenrir - Magic User 1H Right?)
-        PlayerFenrirRunOneLeftMagom = 435, // Run (Fenrir - Magic User 1H Left?)
-        PlayerFenrirRunElf = 436, // Run (Fenrir - Elf?)
-        PlayerFenrirRunTwoSwordElf = 437, // Run (Fenrir - Elf Dual Wield?)
-        PlayerFenrirRunOneRightElf = 438, // Run (Fenrir - Elf 1H Right?)
-        PlayerFenrirRunOneLeftElf = 439, // Run (Fenrir - Elf 1H Left?)
-
-        // 440-458 missing
-        PlayerRageUniAttack = 459, // Attack (Unicorn - Rage Fighter?)
-        PlayerRageUniAttackOneRight = 460, // Attack (Unicorn - Rage Fighter 1H Right?)
-        PlayerRageUniRun = 461, // Run (Unicorn - Rage Fighter?)
-        PlayerRageUniRunOneRight = 462, // Run (Unicorn - Rage Fighter 1H Right?)
-        PlayerRageUniStopOneRight = 463, // Stop/Idle (Unicorn - Rage Fighter 1H Right?)
-        PlayerRageFenrir = 464, // Stop/Idle (Fenrir - Rage Fighter?)
-        PlayerRageFenrirTwoSword = 465, // Stop/Idle (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirOneRight = 466, // Stop/Idle (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirOneLeft = 467, // Stop/Idle (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirWalk = 468, // Walk (Fenrir - Rage Fighter?)
-        PlayerRageFenrirWalkOneRight = 469, // Walk (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirWalkOneLeft = 470, // Walk (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirWalkTwoSword = 471, // Walk (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirRun = 472, // Run (Fenrir - Rage Fighter?)
-        PlayerRageFenrirRunTwoSword = 473, // Run (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirRunOneRight = 474, // Run (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirRunOneLeft = 475, // Run (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirStand = 476, // Stand (Fenrir - Rage Fighter?) - To samo co Stop?
-        PlayerRageFenrirStandTwoSword = 477, // Stand (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirStandOneRight = 478, // Stand (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirStandOneLeft = 479, // Stand (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirDamage = 480, // Get Hit (Fenrir - Rage Fighter?)
-        PlayerRageFenrirDamageTwoSword = 481, // Get Hit (Fenrir - Rage Fighter Dual Wield?)
-        PlayerRageFenrirDamageOneRight = 482, // Get Hit (Fenrir - Rage Fighter 1H Right?)
-        PlayerRageFenrirDamageOneLeft = 483, // Get Hit (Fenrir - Rage Fighter 1H Left?)
-        PlayerRageFenrirAttackRight = 484, // Attack (Fenrir - Rage Fighter Right?)
-        PlayerStopRagefighter = 485, // Stop/Idle (Rage Fighter)
+        Set = 0,
+        PlayerStopMale = 1,
+        PlayerStopFemale = 2,
+        PlayerStopSummoner = 3,
+        PlayerStopSword = 4,
+        PlayerStopTwoHandSword = 5,
+        PlayerStopSpear = 6,
+        PlayerStopScythe = 7,
+        PlayerStopBow = 8,
+        PlayerStopCrossbow = 9,
+        PlayerStopWand = 10,
+        PlayerStopFly = 11,
+        PlayerStopFlyCrossbow = 12,
+        PlayerStopRide = 13, // Fenrir/Horse/Uniria
+        PlayerStopRideWeapon = 14,
+
+        PlayerWalkMale = 15,
+        PlayerWalkFemale = 16,
+        PlayerWalkSword = 17,
+        PlayerWalkTwoHandSword = 18,
+        PlayerWalkSpear = 19,
+        PlayerWalkScythe = 20,
+        PlayerWalkBow = 21,
+        PlayerWalkCrossbow = 22,
+        PlayerWalkWand = 23,
+        PlayerWalkSwim = 24,
+
+        PlayerRun = 25,
+        PlayerRunSword = 26,
+        PlayerRunTwoSword = 27,
+        PlayerRunTwoHandSword = 28,
+        PlayerRunSpear = 29,
+        PlayerRunBow = 30,
+        PlayerRunCrossbow = 31,
+        PlayerRunWand = 32,
+        PlayerRunSwim = 33,
+
+        PlayerFly = 34,
+        PlayerFlyCrossbow = 35,
+        PlayerRunRide = 36,
+        PlayerRunRideWeapon = 37,
+
+        PlayerAttackFist = 38,
+        PlayerAttackSwordRight1 = 39,
+        PlayerAttackSwordRight2 = 40,
+        PlayerAttackSwordLeft1 = 41,
+        PlayerAttackSwordLeft2 = 42,
+        PlayerAttackTwoHandSword1 = 43,
+        PlayerAttackTwoHandSword2 = 44,
+        PlayerAttackTwoHandSword3 = 45,
+        PlayerAttackSpear1 = 46,
+        PlayerAttackScythe1 = 47,
+        PlayerAttackScythe2 = 48,
+        PlayerAttackScythe3 = 49,
+        PlayerAttackBow = 50,
+        PlayerAttackCrossbow = 51,
+        PlayerAttackFlyBow = 52,
+        PlayerAttackFlyCrossbow = 53,
+        PlayerAttackRideSword = 54,
+        PlayerAttackRideTwoHandSword = 55,
+        PlayerAttackRideSpear = 56,
+        PlayerAttackRideScythe = 57,
+        PlayerAttackRideBow = 58,
+        PlayerAttackRideCrossbow = 59,
+
+        PlayerAttackSkillSword1 = 60,
+        PlayerAttackSkillSword2 = 61,
+        PlayerAttackSkillSword3 = 62,
+        PlayerAttackSkillSword4 = 63,
+        PlayerAttackSkillSword5 = 64,
+
+        PlayerAttackSkillWheel = 65,
+        PlayerAttackSkillFuryStrike = 66,
+        PlayerSkillVitality = 67, // Skill (Vitality / Inner Strength?)
+        PlayerSkillRider = 68,
+        PlayerSkillRiderFly = 69,
+        PlayerAttackSkillSpear = 70,
+        PlayerAttackDeathstab = 71,
+        PlayerSkillHellBegin = 72,
+        PlayerSkillHellStart = 73,
+
+        PlayerAttackEnd = 74,
+        PlayerFlyRide = 74, // Alias for PlayerAttackEnd
+        PlayerFlyRideWeapon = 75,
+        PlayerDarklordStand = 76,
+        PlayerDarklordWalk = 77,
+        PlayerStopRideHorse = 78,
+        PlayerRunRideHorse = 79,
+        PlayerAttackStrike = 80,
+        PlayerAttackTeleport = 81,
+        PlayerAttackRideStrike = 82,
+        PlayerAttackRideTeleport = 83,
+        PlayerAttackRideHorseSword = 84,
+        PlayerAttackRideAttackFlash = 85,
+        PlayerAttackRideAttackMagic = 86,
+        PlayerAttackDarkhorse = 87,
+        PlayerIdle1Darkhorse = 88,
+        PlayerIdle2Darkhorse = 89,
+        PlayerFenrirAttack = 90,
+        PlayerFenrirAttackDarklordAqua = 91,
+        PlayerFenrirAttackDarklordStrike = 92,
+        PlayerFenrirAttackDarklordSword = 93,
+        PlayerFenrirAttackDarklordTeleport = 94,
+        PlayerFenrirAttackDarklordFlash = 95,
+        PlayerFenrirAttackTwoSword = 96,
+        PlayerFenrirAttackMagic = 97,
+        PlayerFenrirAttackCrossbow = 98,
+        PlayerFenrirAttackSpear = 99,
+        PlayerFenrirAttackOneSword = 100,
+        PlayerFenrirAttackBow = 101,
+        PlayerFenrirSkill = 102,
+        PlayerFenrirSkillTwoSword = 103,
+        PlayerFenrirSkillOneRight = 104,
+        PlayerFenrirSkillOneLeft = 105,
+        PlayerFenrirDamage = 106,
+        PlayerFenrirDamageTwoSword = 107,
+        PlayerFenrirDamageOneRight = 108,
+        PlayerFenrirDamageOneLeft = 109,
+        PlayerFenrirRun = 110,
+        PlayerFenrirRunTwoSword = 111,
+        PlayerFenrirRunOneRight = 112,
+        PlayerFenrirRunOneLeft = 113,
+        PlayerFenrirRunMagom = 114,
+        PlayerFenrirRunTwoSwordMagom = 115,
+        PlayerFenrirRunOneRightMagom = 116,
+        PlayerFenrirRunOneLeftMagom = 117,
+        PlayerFenrirRunElf = 118,
+        PlayerFenrirRunTwoSwordElf = 119,
+        PlayerFenrirRunOneRightElf = 120,
+        PlayerFenrirRunOneLeftElf = 121,
+        PlayerFenrirStand = 122,
+        PlayerFenrirStandTwoSword = 123,
+        PlayerFenrirStandOneRight = 124,
+        PlayerFenrirStandOneLeft = 125,
+        PlayerFenrirWalk = 126,
+        PlayerFenrirWalkTwoSword = 127,
+        PlayerFenrirWalkOneRight = 128,
+        PlayerFenrirWalkOneLeft = 129,
+
+        PlayerAttackBowUp = 130,
+        PlayerAttackCrossbowUp = 131,
+        PlayerAttackFlyBowUp = 132,
+        PlayerAttackFlyCrossbowUp = 133,
+        PlayerAttackRideBowUp = 134,
+        PlayerAttackRideCrossbowUp = 135,
+        PlayerAttackOneFlash = 136,
+        PlayerAttackRush = 137,
+        PlayerAttackDeathCannon = 138,
+        PlayerAttackRemoval = 139,
+        PlayerAttackStun = 140,
+        PlayerShock = 141,
+
+        PlayerStopTwoHandSwordTwo = 142,
+        PlayerWalkTwoHandSwordTwo = 143,
+        PlayerRunTwoHandSwordTwo = 144,
+        PlayerAttackTwoHandSwordTwo = 145,
+
+        PlayerSkillHand1 = 146,
+        PlayerSkillHand2 = 147,
+        PlayerSkillWeapon1 = 148,
+        PlayerSkillWeapon2 = 149,
+        PlayerSkillElf1 = 150,
+        PlayerSkillTeleport = 151,
+        PlayerSkillFlash = 152,
+        PlayerSkillInferno = 153,
+        PlayerSkillHell = 154,
+        PlayerRideSkill = 155,
+        PlayerSkillSleep = 156,
+        PlayerSkillSleepUni = 157,
+        PlayerSkillSleepDino = 158,
+        PlayerSkillSleepFenrir = 159,
+        PlayerSkillChainLightning = 160,
+        PlayerSkillChainLightningUni = 161,
+        PlayerSkillChainLightningDino = 162,
+        PlayerSkillChainLightningFenrir = 163,
+        PlayerSkillLightningOrb = 164,
+        PlayerSkillLightningOrbUni = 165,
+        PlayerSkillLightningOrbDino = 166,
+        PlayerSkillLightningOrbFenrir = 167,
+        PlayerSkillDrainLife = 168,
+        PlayerSkillDrainLifeUni = 169,
+        PlayerSkillDrainLifeDino = 170,
+        PlayerSkillDrainLifeFenrir = 171,
+        PlayerSkillSummon = 172,
+        PlayerSkillSummonUni = 173,
+        PlayerSkillSummonDino = 174,
+        PlayerSkillSummonFenrir = 175,
+
+        PlayerSkillBlowOfDestruction = 176,
+        PlayerSkillSwellOfMp = 177, // Also known as Swell of Magic Power
+        PlayerSkillMultishotBowStand = 178,
+        PlayerSkillMultishotBowFlying = 179,
+        PlayerSkillMultishotCrossbowStand = 180,
+        PlayerSkillMultishotCrossbowFlying = 181,
+        PlayerSkillRecovery = 182,
+        PlayerSkillGiganticstorm = 183,
+        PlayerSkillFlamestrike = 184,
+        PlayerSkillLightningShock = 185,
+
+        PlayerDefense1 = 186,
+        PlayerGreeting1 = 187,
+        PlayerGreetingFemale1 = 188,
+        PlayerGoodbye1 = 189,
+        PlayerGoodbyeFemale1 = 190,
+        PlayerClap1 = 191,
+        PlayerClapFemale1 = 192,
+        PlayerCheer1 = 193,
+        PlayerCheerFemale1 = 194,
+        PlayerDirection1 = 195,
+        PlayerDirectionFemale1 = 196,
+        PlayerGesture1 = 197,
+        PlayerGestureFemale1 = 198,
+        PlayerUnknown1 = 199, // Shrug?
+        PlayerUnknownFemale1 = 200,
+        PlayerCry1 = 201,
+        PlayerCryFemale1 = 202,
+        PlayerAwkward1 = 203,
+        PlayerAwkwardFemale1 = 204,
+        PlayerSee1 = 205, // Look around?
+        PlayerSeeFemale1 = 206,
+        PlayerWin1 = 207,
+        PlayerWinFemale1 = 208,
+        PlayerSmile1 = 209,
+        PlayerSmileFemale1 = 210,
+        PlayerSleep1 = 211,
+        PlayerSleepFemale1 = 212,
+        PlayerCold1 = 213,
+        PlayerColdFemale1 = 214,
+        PlayerAgain1 = 215, // Come on?
+        PlayerAgainFemale1 = 216,
+        PlayerRespect1 = 217,
+        PlayerSalute1 = 218,
+        PlayerScissors = 219,
+        PlayerRock = 220,
+        PlayerPaper = 221,
+        PlayerHustle = 222, // Dance?
+        PlayerProvocation = 223,
+        PlayerLookAround = 224,
+        PlayerCheers = 225,
+        PlayerKoreaHandclap = 226, // Dance?
+        PlayerPointDance = 227, // Dance?
+        PlayerRush1 = 228, // Charge?
+        PlayerComeUp = 229,
+        ActionUnknown230 = 230,
+        PlayerDie1 = 231,
+        PlayerDie2 = 232,
+        PlayerSit1 = 233,
+        PlayerSit2 = 234,
+        PlayerSitFemale1 = 235,
+        PlayerSitFemale2 = 236,
+        PlayerHealing1 = 237,
+        PlayerHealingFemale1 = 238,
+        PlayerPoseMale1 = 239,
+        PlayerPoseFemale1 = 240,
+        PlayerJack1 = 241,
+        PlayerJack2 = 242,
+        PlayerSanta1 = 243,
+        PlayerSanta2 = 244,
+        PlayerChangeUp = 245, // 3rd Class Change Up Effect?
+        PlayerRecoverSkill = 246,
+
+        PlayerSkillThrust = 247,
+        PlayerSkillStamp = 248,
+        PlayerSkillGiantswing = 249,
+        PlayerSkillDarksideReady = 250,
+        PlayerSkillDarksideAttack = 251,
+        PlayerSkillDragonkick = 252,
+        PlayerSkillDragonlore = 253,
+        PlayerSkillPhoenixShot = 254,
+        PlayerSkillAttUpOurforces = 255,
+        PlayerSkillHpUpOurforces = 256,
+
+        // Rage Fighter related animations
+        PlayerRageUniAttack = 257,
+        PlayerRageUniAttackOneRight = 258,
+        PlayerRageUniRun = 259,
+        PlayerRageUniRunOneRight = 260,
+        PlayerRageUniStopOneRight = 261,
+        PlayerRageFenrir = 262,
+        PlayerRageFenrirTwoSword = 263,
+        PlayerRageFenrirOneRight = 264,
+        PlayerRageFenrirOneLeft = 265,
+        PlayerRageFenrirWalk = 266,
+        PlayerRageFenrirWalkOneRight = 267,
+        PlayerRageFenrirWalkOneLeft = 268,
+        PlayerRageFenrirWalkTwoSword = 269,
+        PlayerRageFenrirRun = 270,
+        PlayerRageFenrirRunTwoSword = 271,
+        PlayerRageFenrirRunOneRight = 272,
+        PlayerRageFenrirRunOneLeft = 273,
+        PlayerRageFenrirStand = 274,
+        PlayerRageFenrirStandTwoSword = 275,
+        PlayerRageFenrirStandOneRight = 276,
+        PlayerRageFenrirStandOneLeft = 277,
+        PlayerRageFenrirDamage = 278,
+        PlayerRageFenrirDamageTwoSword = 279,
+        PlayerRageFenrirDamageOneRight = 280,
+        PlayerRageFenrirDamageOneLeft = 281,
+        PlayerRageFenrirAttackRight = 282,
+        PlayerStopRagefighter = 283,
+        MaxPlayerAction = 284,
     }
 }

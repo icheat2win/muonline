@@ -4,15 +4,13 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
-using System;
-using System.Diagnostics;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Client.Main.Configuration;
 using Client.Main.Networking;
 using System.Collections.Concurrent;
 using Client.Main.Core.Client;
+using Client.Main.Content;
 #if ANDROID
 using Android.App;
 using System.IO;
@@ -23,6 +21,7 @@ namespace Client.Main
     public class MuGame : Game
     {
         // Static Fields
+        private static Controllers.TaskScheduler _taskScheduler;
         private static readonly ConcurrentQueue<Action> _mainThreadActions = new ConcurrentQueue<Action>();
 
         // Static Properties
@@ -32,6 +31,8 @@ namespace Client.Main
         public static ILoggerFactory AppLoggerFactory { get; private set; }
         public static MuOnlineSettings AppSettings { get; private set; }
         public static NetworkManager Network { get; private set; }
+        public static Controllers.TaskScheduler TaskScheduler => _taskScheduler;
+        public static int FrameIndex { get; private set; }
 
         // Instance Fields
         private readonly GraphicsDeviceManager _graphics;
@@ -45,6 +46,9 @@ namespace Client.Main
         public int Height => _graphics.PreferredBackBufferHeight;
         public MouseState PrevMouseState { get; private set; }
         public MouseState Mouse { get; set; }
+        public MouseState PrevUiMouseState { get; private set; }
+        public MouseState UiMouseState { get; private set; }
+        public Point UiMousePosition { get; private set; }
         public KeyboardState PrevKeyboard { get; private set; }
         public KeyboardState Keyboard { get; private set; }
         public TouchCollection PrevTouchState { get; private set; }
@@ -65,7 +69,8 @@ namespace Client.Main
             _graphics = new GraphicsDeviceManager(this)
             {
                 PreferredBackBufferWidth = 1280,
-                PreferredBackBufferHeight = 720
+                PreferredBackBufferHeight = 720,
+                PreferMultiSampling = Constants.MSAA_ENABLED
             };
 
 #if ANDROID || IOS
@@ -84,7 +89,9 @@ namespace Client.Main
             }
 #endif
             _graphics.GraphicsProfile = GraphicsProfile.HiDef;
+            _graphics.PreferredBackBufferFormat = SurfaceFormat.Color;
             _graphics.ApplyChanges();
+            UiScaler.Configure(_graphics.PreferredBackBufferWidth, _graphics.PreferredBackBufferHeight, Constants.BASE_UI_WIDTH, Constants.BASE_UI_HEIGHT);
             Content.RootDirectory = "Content";
 
             // Register handler for game exit (X button, Alt+F4, etc.)
@@ -138,6 +145,25 @@ namespace Client.Main
             { logger.LogError("❌ ProtocolVersion '{V}' invalid. Valid: {Vs}", settings.ProtocolVersion, string.Join(", ", Enum.GetNames<TargetProtocolVersion>())); isValid = false; }
             if (string.IsNullOrWhiteSpace(settings.ClientVersion)) { logger.LogWarning("⚠️ ClientVersion not set."); }
             if (string.IsNullOrWhiteSpace(settings.ClientSerial)) { logger.LogWarning("⚠️ ClientSerial not set."); }
+            if (settings.Graphics == null)
+            {
+                logger.LogError("❌ Graphics settings missing from configuration.");
+                isValid = false;
+            }
+            else
+            {
+                if (settings.Graphics.Width <= 0 || settings.Graphics.Height <= 0)
+                {
+                    logger.LogError("❌ Graphics resolution {W}x{H} invalid.", settings.Graphics.Width, settings.Graphics.Height);
+                    isValid = false;
+                }
+
+                if (settings.Graphics.UiVirtualWidth <= 0 || settings.Graphics.UiVirtualHeight <= 0)
+                {
+                    logger.LogError("❌ UI virtual resolution {W}x{H} invalid.", settings.Graphics.UiVirtualWidth, settings.Graphics.UiVirtualHeight);
+                    isValid = false;
+                }
+            }
             return isValid;
         }
 
@@ -190,6 +216,7 @@ namespace Client.Main
             AppConfiguration = new ConfigurationBuilder()
                 .SetBasePath(AppContext.BaseDirectory)
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true)
                 .Build();
 #endif
 
@@ -215,7 +242,9 @@ namespace Client.Main
             if (AppSettings == null || !ValidateSettings(AppSettings, bootLogger)) // Add validation
             {
                 bootLogger.LogCritical("❌ Invalid application settings found in appsettings.json. Shutting down.");
+#if !IOS
                 Exit(); // Stop the game if settings are invalid
+#endif
                 return;
             }
             bootLogger.LogInformation("✅ Configuration loaded.");
@@ -228,15 +257,21 @@ namespace Client.Main
             Network = new NetworkManager(AppLoggerFactory, AppSettings, characterState, scopeManager);
             bootLogger.LogInformation("✅ Network Manager initialized.");
 
+            // Initialize TaskScheduler
+            _taskScheduler = new Controllers.TaskScheduler(AppLoggerFactory);
+            bootLogger.LogInformation("✅ TaskScheduler initialized.");
+
             IsMouseVisible = false; // Keep this if you want a custom cursor
+
+            ApplyGraphicsConfiguration(AppSettings.Graphics);
+            _logger?.LogDebug("UI scale factor set to {Scale:F3} (virtual {VirtualWidth}x{VirtualHeight} -> actual {ActualWidth}x{ActualHeight}).",
+                UiScaler.Scale,
+                UiScaler.VirtualSize.X,
+                UiScaler.VirtualSize.Y,
+                UiScaler.ActualSize.X,
+                UiScaler.ActualSize.Y);
+
             base.Initialize();
-
-            // Base aspect ratio (e.g., 16:9)
-            float baseAspectRatio = 16f / 9f;
-            float currentAspectRatio = (float)_graphics.PreferredBackBufferWidth / _graphics.PreferredBackBufferHeight;
-            _scaleFactor = currentAspectRatio / baseAspectRatio;
-
-            _logger?.LogDebug($"Scale Factor: {_scaleFactor}");
         }
 
         protected override void UnloadContent()
@@ -249,31 +284,19 @@ namespace Client.Main
 
         protected override void Update(GameTime gameTime)
         {
-            // --- Process Main Thread Actions ---
-            int actionCount = 0;
-            var queueLogger = AppLoggerFactory?.CreateLogger("MuGame.MainThreadQueue"); // logger for the queue
-
+            // --- Process Main Thread Actions via TaskScheduler ---
             while (_mainThreadActions.TryDequeue(out Action action))
             {
-                actionCount++;
-                //queueLogger?.LogTrace("Dequeued action #{Count}. Attempting execution...", actionCount);
-                try
-                {
-                    action.Invoke();
-                    //queueLogger?.LogTrace("Action #{Count} executed successfully.", actionCount);
-                }
-                catch (Exception)
-                {
-                    //queueLogger?.LogError(ex, "Error executing action #{Count} scheduled on main thread.", actionCount);
-                }
+                _taskScheduler.QueueTask(action, Controllers.TaskScheduler.Priority.Normal);
             }
-            // **** ADD LOGGING ****
-            // if (actionCount > 0) queueLogger?.LogDebug("Processed {Count} actions from queue this frame.", actionCount);
-            // **** END ADD LOGGING ****
+
+            // Process prioritized tasks using the task scheduler
+            _taskScheduler.ProcessFrame();
 
             try // outer try
             {
                 GameTime = gameTime;
+                FrameIndex++;
                 UpdateInputInfo(gameTime);
                 CheckShaderToggles();
 
@@ -337,6 +360,9 @@ namespace Client.Main
         {
             try
             {
+                // Initialize frame-based optimizations
+                BMDLoader.Instance.BeginFrame();
+                
                 FPSCounter.Instance.CalcFPS(gameTime);
                 DrawSceneToMainRenderTarget(gameTime);
                 ApplyPostProcessingEffects();
@@ -389,11 +415,18 @@ namespace Client.Main
             // Initialize/Load the new scene (assuming Initialize/Load is asynchronous)
             try
             {
-                _logger.LogDebug("--- ChangeSceneInternal: Calling Initialize() for {SceneType}...", ActiveScene.GetType().Name);
-                // Ensure the Initialize method exists and is appropriate,
-                // or use await ActiveScene.Load() if that's how your system works.
-                await ActiveScene.Initialize();
-                _logger.LogDebug("--- ChangeSceneInternal: Initialize() completed for {SceneType}.", ActiveScene.GetType().Name);
+                _logger.LogDebug("--- ChangeSceneInternal: Starting initialization for {SceneType}...", ActiveScene.GetType().Name);
+
+                if (ActiveScene is BaseScene baseScene)
+                {
+                    await baseScene.InitializeWithProgressReporting(null);
+                }
+                else
+                {
+                    await ActiveScene.Initialize();
+                }
+
+                _logger.LogDebug("--- ChangeSceneInternal: Initialization completed for {SceneType}.", ActiveScene.GetType().Name);
             }
             catch (Exception ex)
             {
@@ -425,6 +458,19 @@ namespace Client.Main
                 Constants.DRAW_BOUNDING_BOXES_INTERACTIVES = !Constants.DRAW_BOUNDING_BOXES_INTERACTIVES;
         }
 
+        public void ApplyGraphicsOptions()
+        {
+#if !(ANDROID || IOS)
+            _graphics.SynchronizeWithVerticalRetrace = !Constants.UNLIMITED_FPS && !Constants.DISABLE_VSYNC;
+            IsFixedTimeStep = !Constants.UNLIMITED_FPS;
+            TargetElapsedTime = Constants.UNLIMITED_FPS
+                ? TimeSpan.FromMilliseconds(1)
+                : TimeSpan.FromSeconds(1.0 / 60.0);
+#endif
+            _graphics.PreferMultiSampling = Constants.MSAA_ENABLED;
+            _graphics.ApplyChanges();
+        }
+
         private async Task ChangeSceneAsync(Type sceneType)
         {
             ActiveScene?.Dispose();
@@ -439,6 +485,7 @@ namespace Client.Main
             var windowBounds = Window.ClientBounds;
 
             PrevMouseState = Mouse;
+            PrevUiMouseState = UiMouseState;
             PrevKeyboard = Keyboard;
             PrevTouchState = Touch;
 
@@ -456,6 +503,17 @@ namespace Client.Main
                 Touch = touchState;
             }
 
+            UiMousePosition = UiScaler.ToVirtual(Mouse.Position);
+            UiMouseState = new MouseState(
+                UiMousePosition.X,
+                UiMousePosition.Y,
+                Mouse.ScrollWheelValue,
+                Mouse.LeftButton,
+                Mouse.MiddleButton,
+                Mouse.RightButton,
+                Mouse.XButton1,
+                Mouse.XButton2);
+
             if (PrevMouseState.Position != Mouse.Position)
                 UpdateMouseRay();
 
@@ -465,7 +523,9 @@ namespace Client.Main
 
         private void UpdateMouseRay()
         {
+            // Use original mouse position - the camera projection should handle the scaling
             Vector2 mousePosition = Mouse.Position.ToVector2();
+
             Vector3 farSource = new Vector3(mousePosition, 1f);
             Vector3 farPoint = GraphicsDevice.Viewport.Unproject(
                 farSource,
@@ -530,7 +590,7 @@ namespace Client.Main
                 effect.Parameters["WorldViewProjection"]?.SetValue(worldViewProjection);
             }
 
-            GraphicsManager.Instance.Sprite.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone, effect);
+            GraphicsManager.Instance.Sprite.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, GraphicsManager.GetQualityLinearSamplerState(), DepthStencilState.None, RasterizerState.CullNone, effect);
             GraphicsManager.Instance.Sprite.Draw(source, GraphicsDevice.Viewport.Bounds, Color.White);
             GraphicsManager.Instance.Sprite.End();
 
@@ -541,9 +601,42 @@ namespace Client.Main
         private void DrawFinalImageToScreen(RenderTarget2D sourceTarget)
         {
             GraphicsDevice.Clear(Color.Black);
-            GraphicsManager.Instance.Sprite.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+
+            Effect gammaEffect = Constants.MSAA_ENABLED ? GraphicsManager.Instance.GammaCorrectionEffect : null;
+
+            GraphicsManager.Instance.Sprite.Begin(
+                SpriteSortMode.Deferred,
+                BlendState.Opaque,
+                GraphicsManager.GetQualityLinearSamplerState(),
+                DepthStencilState.None,
+                RasterizerState.CullNone,
+                gammaEffect);
+
             GraphicsManager.Instance.Sprite.Draw(sourceTarget, GraphicsDevice.Viewport.Bounds, Color.White);
             GraphicsManager.Instance.Sprite.End();
+        }
+
+        private void ApplyGraphicsConfiguration(GraphicsSettings graphics)
+        {
+            if (graphics == null)
+            {
+                return;
+            }
+
+#if !(ANDROID || IOS)
+            _graphics.IsFullScreen = graphics.IsFullScreen;
+#endif
+            _graphics.PreferredBackBufferWidth = Math.Max(1, graphics.Width);
+            _graphics.PreferredBackBufferHeight = Math.Max(1, graphics.Height);
+            _graphics.ApplyChanges();
+
+            UiScaler.Configure(
+                _graphics.PreferredBackBufferWidth,
+                _graphics.PreferredBackBufferHeight,
+                Math.Max(1, graphics.UiVirtualWidth),
+                Math.Max(1, graphics.UiVirtualHeight));
+
+            _scaleFactor = UiScaler.Scale;
         }
 
         /// <summary>

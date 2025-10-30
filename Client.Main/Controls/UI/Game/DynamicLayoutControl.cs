@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using Client.Main.Controls.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -40,7 +41,7 @@ namespace Client.Main.Controls.UI.Game
     /// Base class for dynamic control layout.
     /// Responsible for loading data from JSON files, scaling, and setting custom alpha values.
     /// </summary>
-    public abstract class DynamicLayoutControl : ExtendedUIControl
+    public abstract class DynamicLayoutControl : ExtendedUIControl, IUiTexturePreloadable
     {
         // Base resolution of the project
         protected int DesignWidth { get; set; } = 1280;
@@ -71,6 +72,20 @@ namespace Client.Main.Controls.UI.Game
             CreateControls();
             UpdateLayout();
         }
+
+        /// <summary>
+        /// Returns the texture paths that should be preloaded for this dynamic layout control.
+        /// By default this returns the configured <see cref="DefaultTexturePath"/> when available.
+        /// </summary>
+        protected virtual IEnumerable<string> EnumeratePreloadTextures()
+        {
+            if (!string.IsNullOrWhiteSpace(DefaultTexturePath))
+            {
+                yield return DefaultTexturePath;
+            }
+        }
+
+        IEnumerable<string> IUiTexturePreloadable.GetPreloadTexturePaths() => EnumeratePreloadTextures() ?? Array.Empty<string>();
 
         protected virtual void LoadLayoutData()
         {
@@ -144,20 +159,18 @@ namespace Client.Main.Controls.UI.Game
         // Scales controls according to the current resolution – also takes CustomScale into account
         public virtual void UpdateLayout()
         {
-            int currentWidth = MuGame.Instance.GraphicsDevice.Viewport.Width;
-            int currentHeight = MuGame.Instance.GraphicsDevice.Viewport.Height;
-            float scaleX = (float)currentWidth / DesignWidth;
-            float scaleY = (float)currentHeight / DesignHeight;
-            float uniformScale = Math.Min(scaleX, scaleY) * CustomScale;
+            float layoutScale = MathF.Max(CustomScale, 0.0001f);
 
             foreach (var ctrl in Controls)
             {
                 if (ctrl.Tag is LayoutInfo info)
                 {
-                    ctrl.X = (int)(info.ScreenX * uniformScale);
-                    ctrl.Y = (int)(info.ScreenY * uniformScale);
-                    ctrl.ViewSize = new Point((int)(info.Width * uniformScale), (int)(info.Height * uniformScale));
-                    ctrl.Scale = uniformScale;
+                    ctrl.X = (int)MathF.Round(info.ScreenX * layoutScale);
+                    ctrl.Y = (int)MathF.Round(info.ScreenY * layoutScale);
+                    ctrl.ViewSize = new Point(
+                        (int)MathF.Round(info.Width * layoutScale),
+                        (int)MathF.Round(info.Height * layoutScale));
+                    ctrl.Scale = 1f;
                 }
             }
         }

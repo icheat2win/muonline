@@ -1,12 +1,13 @@
 using Client.Main.Content;
 using Client.Main.Controls.UI.Game;
+using Client.Main.Networking;
 using Client.Main.Objects;
 using System.Threading.Tasks;
 
 namespace Client.Main.Objects.NPCS
 {
     [NpcInfo(253, "Potion Girl Amy")]
-    public class PotionGirl : CompositeNPCObject
+    public class PotionGirl : NPCObject
     {
         public override async Task Load()
         {
@@ -18,7 +19,11 @@ namespace Client.Main.Objects.NPCS
         }
         protected override void HandleClick()
         {
-            NpcShopControl.Instance.Visible = true;
+            var svc = MuGame.Network?.GetCharacterService();
+            if (svc != null)
+            {
+                _ = svc.SendTalkToNpcRequestAsync(NetworkId);
+            }
         }
     }
 }

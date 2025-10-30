@@ -41,14 +41,6 @@ namespace Client.Main.Objects
             }
         }
 
-        /// <summary>
-        /// Preloads this sprite's texture to avoid stalls on first render.
-        /// </summary>
-        public virtual async Task PreloadTexturesAsync()
-        {
-            if (!string.IsNullOrEmpty(TexturePath))
-                await TextureLoader.Instance.PrepareAndGetTexture(TexturePath);
-        }
         
         public override void Draw(GameTime gameTime)
         {
@@ -63,6 +55,8 @@ namespace Client.Main.Objects
                 Camera.Instance.Projection,
                 Camera.Instance.View,
                 Matrix.Identity);
+
+            // Projected coordinates are already in the correct space
 
             float layerDepth = MathHelper.Clamp(projected.Z, 0f, 1f);
 
@@ -112,6 +106,8 @@ namespace Client.Main.Objects
                 Matrix.Identity
             );
 
+            // Projected coordinates are already in the correct space
+
             _screenPosition = new Vector2(screenPosition.X, screenPosition.Y);
 
             Vector3 worldScale = new Vector3(
@@ -122,7 +118,7 @@ namespace Client.Main.Objects
 
             float distanceToCamera = Vector3.Distance(Camera.Instance.Position, WorldPosition.Translation);
             float scaleFactor = Scale / (MathF.Max(distanceToCamera, 0.1f) / Constants.TERRAIN_SIZE);
-            _scaleMix = scaleFactor * worldScale.X;
+            _scaleMix = scaleFactor * worldScale.X * Constants.RENDER_SCALE;
         }
 
         public override void Dispose()

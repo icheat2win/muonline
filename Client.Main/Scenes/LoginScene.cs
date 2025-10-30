@@ -2,7 +2,7 @@
 using Client.Main.Controls.UI;
 using Client.Main.Controls.UI.Login;
 using Client.Main.Core.Client;
-using Client.Main.Core.Models;   // Add using for ServerInfo
+using Client.Main.Core.Models;   // For ServerInfo
 using Client.Main.Models;
 using Client.Main.Networking;
 using Client.Main.Worlds;
@@ -102,11 +102,15 @@ namespace Client.Main.Scenes
             if (_networkManager.CurrentState >= ClientConnectionState.ConnectedToConnectServer)
             {
                 _logger.LogInformation("LoginScene loaded, NetworkManager already connected or connecting. State: {State}", _networkManager.CurrentState);
-                HandleConnectionStateChange(this, _networkManager.CurrentState);
+
                 if (!_uiInitialized && _networkManager.CurrentState >= ClientConnectionState.ReceivedServerList)
                 {
-                    InitializeServerSelectionUI(); // This will add controls, they'll be initialized by BaseScene's main loop if not already
+                    InitializeServerSelectionUI(); // Ensure UI exists before applying visibility rules
                 }
+
+                HandleConnectionStateChange(this, _networkManager.CurrentState);
+
+                EnsureServerListPopulatedFromCache();
             }
             else if (_networkManager.CurrentState == ClientConnectionState.Initial ||
                      _networkManager.CurrentState == ClientConnectionState.Disconnected)
@@ -271,13 +275,17 @@ namespace Client.Main.Scenes
                             msg.Closed += (s, e) =>
                             {
                                 _logger.LogInformation("Closing game after connection lost message.");
+#if !IOS
                                 MuGame.ScheduleOnMainThread(() => MuGame.Instance.Exit());
+#endif
                             };
                         }
                         else
                         {
                             _logger.LogError("Failed to show MessageWindow for connection lost. Exiting game directly.");
+#if !IOS
                             MuGame.ScheduleOnMainThread(() => MuGame.Instance.Exit());
+#endif
                         }
                     }
                 }
@@ -348,11 +356,43 @@ namespace Client.Main.Scenes
                     InitializeServerSelectionUI();
                 }
                 // Visibility is now handled by HandleConnectionStateChange after state update
+                PopulateServerList(servers);
+                HandleConnectionStateChange(this, _networkManager.CurrentState);
             });
         }
 
+        private void EnsureServerListPopulatedFromCache()
+        {
+            var cachedServers = _networkManager.GetCachedServerList();
+            if (cachedServers == null || cachedServers.Count == 0)
+            {
+                return;
+            }
+
+            MuGame.ScheduleOnMainThread(() =>
+            {
+                if (!_uiInitialized)
+                {
+                    InitializeServerSelectionUI();
+                }
+
+                PopulateServerList(cachedServers.ToList());
+                HandleConnectionStateChange(this, _networkManager.CurrentState);
+            });
+        }
+
+        private void PopulateServerList(List<ServerInfo> servers)
+        {
+            if (_serverList == null)
+            {
+                return;
+            }
+
+            _serverList.SetServers(servers);
+        }
+
         private void HandleCharacterListReceived(object sender,
-            List<(string Name, CharacterClassNumber Class, ushort Level)> characters)
+            List<(string Name, CharacterClassNumber Class, ushort Level, byte[] Appearance)> characters)
         {
             MuGame.ScheduleOnMainThread(() =>
             {
@@ -509,12 +549,22 @@ namespace Client.Main.Scenes
             // UI visibility will be handled by HandleConnectionStateChange when state changes to RequestingConnectionInfo
             _ = _networkManager.RequestGameServerConnectionAsync(e.Index);
 
-            // On Android the state change might be delayed; show the dialog immediately
+            // Show the dialog immediately and ensure it's on top.
+            // On some Android devices the state change event can be delayed,
+            // leaving the server list visible and drawn above the dialog.
             if (_loginDialog != null)
             {
                 _loginDialog.Visible = true;
+                _loginDialog.BringToFront();
                 _loginDialog.FocusUsername();
             }
+
+            // Proactively hide server selection UI right away to avoid overlap if the
+            // connection state change is delayed (observed on Android builds).
+            _serverList?.GetType(); // no-op to avoid nullable warnings below
+            if (_serverList != null) _serverList.Visible = false;
+            if (_nonEventGroup != null) _nonEventGroup.Visible = false;
+            if (_eventGroup != null) _eventGroup.Visible = false;
         }
 
         // --- Helper Methods ---

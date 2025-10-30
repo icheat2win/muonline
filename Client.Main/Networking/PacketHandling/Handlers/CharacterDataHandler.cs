@@ -38,6 +38,79 @@ namespace Client.Main.Networking.PacketHandling.Handlers
 
         // ───────────────────────── Packet Handlers ─────────────────────────
 
+        [PacketHandler(0x07, PacketRouter.NoSubCode)] // MagicEffectStatus
+        public Task HandleMagicEffectStatusAsync(Memory<byte> packet)
+        {
+            try
+            {
+                var effectPacket = new MagicEffectStatus(packet);
+                byte effectId = effectPacket.EffectId;
+                ushort playerId = effectPacket.PlayerId;
+                bool isActive = effectPacket.IsActive;
+
+                _logger.LogDebug("MagicEffectStatus received: Effect ID: {EffectId}, Player ID: {PlayerId}, Active: {IsActive}",
+                    effectId, playerId, isActive);
+
+                // Update character state
+                if (isActive)
+                {
+                    _characterState.ActivateBuff(effectId, playerId);
+
+                    // Special message for Elf Soldier buff (ID 3 - NPC Helper buff) - only for local player
+                    if (effectId == 3 && playerId == _characterState.Id)
+                    {
+                        MuGame.ScheduleOnMainThread(() =>
+                        {
+                            var gameScene = MuGame.Instance?.ActiveScene as Scenes.GameScene;
+                            if (gameScene != null)
+                            {
+                                var chatLog = gameScene.Controls.OfType<Controls.UI.ChatLogWindow>().FirstOrDefault();
+                                chatLog?.AddMessage("System", "You received a buff from Elf Soldier that enhances attack and defense!", Models.MessageType.Info);
+                            }
+                        });
+                    }
+                }
+                else
+                {
+                    _characterState.DeactivateBuff(effectId);
+                }
+
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing MagicEffectStatus packet.");
+                return Task.CompletedTask;
+            }
+        }
+
+        [PacketHandler(0x1B, PacketRouter.NoSubCode)] // MagicEffectCancelled
+        public Task HandleMagicEffectCancelledAsync(Memory<byte> packet)
+        {
+            try
+            {
+                var effectPacket = new MagicEffectCancelled(packet);
+                ushort skillId = effectPacket.SkillId;
+                ushort targetId = effectPacket.TargetId;
+
+                _logger.LogDebug("MagicEffectCancelled received: Skill ID: {SkillId}, Target ID: {TargetId}",
+                    skillId, targetId);
+
+                // Map skill ID to effect ID and deactivate
+                // For now, we'll use the lower byte of skill ID as effect ID
+                // This mapping may need to be adjusted based on actual game data
+                byte effectId = (byte)(skillId & 0xFF);
+                _characterState.DeactivateBuff(effectId);
+
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing MagicEffectCancelled packet.");
+                return Task.CompletedTask;
+            }
+        }
+
         [PacketHandler(0xF3, 0x03)] // CharacterInformation
         public Task HandleCharacterInformationAsync(Memory<byte> packet)
         {
@@ -277,6 +350,13 @@ namespace Client.Main.Networking.PacketHandling.Handlers
 
                 // Trigger UI update
                 _networkManager.ProcessCharacterRespawn(mapId, x, y, direction);
+
+                // Heuristic: Some servers don't send CharacterInformation after selection
+                if (_networkManager.CurrentState == ClientConnectionState.SelectingCharacter)
+                {
+                    _logger.LogInformation("Heuristic EnteredGame: SelectingCharacter + RespawnAfterDeath received. Marking InGame.");
+                    _networkManager.ProcessCharacterInformation();
+                }
             }
             catch (Exception ex)
             {
@@ -319,6 +399,13 @@ namespace Client.Main.Networking.PacketHandling.Handlers
             _characterState.UpdateMap(mapId);
             _characterState.UpdateDirection(direction);
             _networkManager.ProcessCharacterRespawn(mapId, x, y, direction);
+
+            // Heuristic: Some servers go directly to MapChanged without sending CharacterInformation
+            if (_networkManager.CurrentState == ClientConnectionState.SelectingCharacter)
+            {
+                _logger.LogInformation("Heuristic EnteredGame: SelectingCharacter + MapChanged received. Marking InGame.");
+                _networkManager.ProcessCharacterInformation();
+            }
 
             return Task.CompletedTask;
         }
@@ -364,7 +451,10 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 }
 
                 // Apply updates
-                _characterState.UpdateLevelAndExperience(newLevel, _characterState.Experience, _characterState.ExperienceForNextLevel, newPoints);
+                // Calculate new experience requirement for next level
+                // Formula: ExpForNextLevel = (newLevel + 9) * newLevel * newLevel * 10
+                ulong nextExp = (ulong)((newLevel + 9) * newLevel * newLevel * 10);
+                _characterState.UpdateLevelAndExperience(newLevel, _characterState.Experience, nextExp, newPoints);
                 _characterState.UpdateMaximumHealthShield(maxHp, maxSd);
                 _characterState.UpdateMaximumManaAbility(maxMana, maxAbility);
 
@@ -533,6 +623,14 @@ namespace Client.Main.Networking.PacketHandling.Handlers
                 _characterState.UpdateCurrentManaAbility(currentMana, currentAbility);
                 if (updatedHealthShield)
                     _characterState.UpdateCurrentHealthShield(currentHp, currentSd);
+
+                // If we're selecting a character and already receive in-game stats,
+                // consider the character entered into game even if CharacterInformation wasn't sent.
+                if (_networkManager.CurrentState == ClientConnectionState.SelectingCharacter)
+                {
+                    _logger.LogInformation("Heuristic EnteredGame: SelectingCharacter + stats received. Marking InGame.");
+                    _networkManager.ProcessCharacterInformation();
+                }
             }
             catch (Exception ex)
             {
@@ -973,6 +1071,131 @@ namespace Client.Main.Networking.PacketHandling.Handlers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "💥 Error parsing MasterSkillLevelUpdate packet.");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        [PacketHandler(0x19, PacketRouter.NoSubCode)] // SkillAnimation (Targeted)
+        public Task HandleSkillAnimationAsync(Memory<byte> packet)
+        {
+            try
+            {
+                var skillAnim = new SkillAnimation(packet);
+                ushort playerId = skillAnim.PlayerId;
+                ushort skillId = skillAnim.SkillId;
+                ushort targetId = skillAnim.TargetId;
+
+                _logger.LogDebug("SkillAnimation: Player={PlayerId}, Skill={SkillId}, Target={TargetId}",
+                    playerId, skillId, targetId);
+
+                MuGame.ScheduleOnMainThread(() =>
+                {
+                    var activeScene = MuGame.Instance?.ActiveScene as GameScene;
+                    if (activeScene?.Hero == null) return;
+
+                    // Check if this is our player
+                    if (playerId == _characterState.Id)
+                    {
+                        int animationId = Core.Utilities.SkillDatabase.GetSkillAnimation(skillId);
+                        string soundPath = Client.Data.BMD.SkillDefinitions.GetSkillSound(skillId);
+
+                        // Play skill sound if available
+                        if (!string.IsNullOrEmpty(soundPath))
+                        {
+                            SoundController.Instance.PlayBuffer(soundPath);
+                        }
+
+                        if (animationId > 0)
+                        {
+                            activeScene.Hero.PlayAction((ushort)animationId);
+                            _logger.LogInformation(
+                                "Playing targeted skill animation {AnimationId} for skill {SkillId} ({SkillName}) on target {TargetId}",
+                                animationId,
+                                skillId,
+                                Core.Utilities.SkillDatabase.GetSkillName(skillId),
+                                targetId);
+                        }
+                        else
+                        {
+                            _logger.LogInformation(
+                                "Playing targeted skill {SkillId} ({SkillName}) on target {TargetId}",
+                                skillId,
+                                Core.Utilities.SkillDatabase.GetSkillName(skillId),
+                                targetId);
+                        }
+                    }
+                    else
+                    {
+                        // TODO: Handle other players' skill animations when scope system supports it
+                        _logger.LogDebug("Other player {PlayerId} used targeted skill {SkillId} on {TargetId}",
+                            playerId, skillId, targetId);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "💥 Error handling SkillAnimation packet.");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        [PacketHandler(0x1E, PacketRouter.NoSubCode)] // AreaSkillAnimation
+        public Task HandleAreaSkillAnimationAsync(Memory<byte> packet)
+        {
+            try
+            {
+                var areaSkill = new AreaSkillAnimation(packet);
+                ushort playerId = areaSkill.PlayerId;
+                ushort skillId = areaSkill.SkillId;
+                byte targetX = areaSkill.PointX;
+                byte targetY = areaSkill.PointY;
+
+                _logger.LogDebug("AreaSkillAnimation: Player={PlayerId}, Skill={SkillId}, Target=({X},{Y})",
+                    playerId, skillId, targetX, targetY);
+
+                MuGame.ScheduleOnMainThread(() =>
+                {
+                    var activeScene = MuGame.Instance?.ActiveScene as GameScene;
+                    if (activeScene?.Hero == null) return;
+
+                    // Check if this is our player
+                    if (playerId == _characterState.Id)
+                    {
+                        // Get animation from SkillDatabase
+                        int animationId = Core.Utilities.SkillDatabase.GetSkillAnimation(skillId);
+                        string soundPath = Client.Data.BMD.SkillDefinitions.GetSkillSound(skillId);
+
+                        // Play skill sound if available
+                        if (!string.IsNullOrEmpty(soundPath))
+                        {
+                            SoundController.Instance.PlayBuffer(soundPath);
+                        }
+
+                        if (animationId > 0)
+                        {
+                            activeScene.Hero.PlayAction((ushort)animationId);
+                            _logger.LogInformation("Playing skill animation {AnimationId} for skill {SkillId} ({SkillName})",
+                                animationId, skillId, Core.Utilities.SkillDatabase.GetSkillName(skillId));
+                        }
+                        else
+                        {
+                            // No specific animation - skill uses generic magic/attack animation
+                            _logger.LogDebug("Skill {SkillId} ({SkillName}) uses generic animation",
+                                skillId, Core.Utilities.SkillDatabase.GetSkillName(skillId));
+                        }
+                    }
+                    else
+                    {
+                        // TODO: Handle other players' skill animations when scope system supports it
+                        _logger.LogDebug("Other player {PlayerId} used skill {SkillId}", playerId, skillId);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "💥 Error handling AreaSkillAnimation packet.");
             }
 
             return Task.CompletedTask;

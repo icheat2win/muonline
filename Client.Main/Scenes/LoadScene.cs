@@ -36,7 +36,7 @@ namespace Client.Main.Scenes
         private BasicEffect _basicEffect;
 
         private const int ProgressBarHeight = 30;
-        private const int ProgressBarY = 700;
+        private static int ProgressBarY => UiScaler.VirtualSize.Y - 70; // Dynamic calculation
         private readonly string _dataPathUrl = Constants.DataPathUrl;
 
         #endregion
@@ -79,7 +79,7 @@ namespace Client.Main.Scenes
             {
                 Text = _statusText,
                 X = 50, // Margin from left
-                Y = MuGame.Instance.Height - 80, // Position above progress bar
+                Y = UiScaler.VirtualSize.Y - 110, // Position well above progress bar (progress at Y-70, height 30)
                 FontSize = 20, // Slightly smaller for more text
                 TextColor = Color.White,
                 ShadowColor = Color.Black * 0.7f,
@@ -102,7 +102,7 @@ namespace Client.Main.Scenes
             {
                 VertexColorEnabled = true,
                 Projection = Matrix.CreateOrthographicOffCenter
-                             (0, MuGame.Instance.Width, MuGame.Instance.Height, 0, 0, 1),
+                             (0, UiScaler.VirtualSize.X, UiScaler.VirtualSize.Y, 0, 0, 1),
                 View = Matrix.Identity,
                 World = Matrix.Identity
             };
@@ -142,21 +142,21 @@ namespace Client.Main.Scenes
             {
                 try
                 {
-                    UpdateStatus("Downloading assets…", 0);
+                    UpdateStatus("Downloading assets...", 0);
                     await DownloadFileWithProgressAsync(url, localZip, UpdateStatus);
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Primary URL failed: {ex.Message}");
                     url = Constants.DefaultDataPathUrl;
-                    UpdateStatus("Retrying with default URL…", 0);
+                    UpdateStatus("Retrying with default URL...", 0);
                     await DownloadFileWithProgressAsync(url, localZip, UpdateStatus);
                 }
 
-                UpdateStatus("Extracting assets…", 0);
+                UpdateStatus("Extracting assets...", 0);
                 await ExtractZipFileWithProgressAsync(localZip, extractPath, UpdateStatus);
 
-                UpdateStatus("Cleaning up…", 1);
+                UpdateStatus("Cleaning up...", 1);
                 if (File.Exists(localZip)) File.Delete(localZip);
             }
 
@@ -169,12 +169,12 @@ namespace Client.Main.Scenes
                                    ? typeof(LoginScene)
                                    : Constants.ENTRY_SCENE;
 
-            UpdateStatus($"Loading {nextSceneType.Name}…", 0);
+            UpdateStatus($"Loading {nextSceneType.Name}...", 0);
 
             var nextScene = (BaseScene)Activator.CreateInstance(nextSceneType)!;
             await nextScene.InitializeWithProgressReporting(UpdateStatus);
 
-            UpdateStatus("Transitioning…", 1);
+            UpdateStatus("Transitioning...", 1);
             await Task.Delay(300);
             MuGame.Instance.ChangeScene(nextScene);
         }
@@ -304,7 +304,14 @@ namespace Client.Main.Scenes
                 GraphicsDevice.Clear(Color.Black);
                 if (_statusLabel.Status == GameControlStatus.Ready)
                 {
-                    using (new SpriteBatchScope(GraphicsManager.Instance.Sprite))
+                    using (new SpriteBatchScope(GraphicsManager.Instance.Sprite,
+                                                SpriteSortMode.Deferred,
+                                                BlendState.AlphaBlend,
+                                                SamplerState.PointClamp,
+                                                DepthStencilState.None,
+                                                null,
+                                                null,
+                                                UiScaler.SpriteTransform))
                         _statusLabel.Draw(gameTime);
                 }
                 return;
@@ -317,7 +324,10 @@ namespace Client.Main.Scenes
                                         SpriteSortMode.Deferred,
                                         BlendState.AlphaBlend,
                                         SamplerState.PointClamp,
-                                        DepthStencilState.None))
+                                        DepthStencilState.None,
+                                        null,
+                                        null,
+                                        UiScaler.SpriteTransform))
             {
                 if (_statusLabel.Visible) _statusLabel.Draw(gameTime);
             }
@@ -325,18 +335,25 @@ namespace Client.Main.Scenes
 
         private void DrawSceneBackground()
         {
-            using (new SpriteBatchScope(GraphicsManager.Instance.Sprite))
+            using (new SpriteBatchScope(GraphicsManager.Instance.Sprite,
+                                        SpriteSortMode.Deferred,
+                                        BlendState.AlphaBlend,
+                                        SamplerState.LinearClamp,
+                                        DepthStencilState.None,
+                                        RasterizerState.CullNone,
+                                        null,
+                                        UiScaler.SpriteTransform))
             {
                 GraphicsManager.Instance.Sprite.Draw(
                     _backgroundTexture,
-                    new Rectangle(0, 0, MuGame.Instance.Width, MuGame.Instance.Height),
+                    new Rectangle(0, 0, UiScaler.VirtualSize.X, UiScaler.VirtualSize.Y),
                     Color.White);
             }
         }
 
         private void DrawProgressBar()
         {
-            int w = MuGame.Instance.Width - 100;
+            int w = UiScaler.VirtualSize.X - 100;
             int x = 50;
 
             var bg = CreateRect(new Vector2(x, ProgressBarY),

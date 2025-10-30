@@ -10,6 +10,7 @@ using Client.Main.Controls.UI;
 using Client.Main.Models;
 using Client.Main.Controls;
 using Client.Main.Objects;
+using MUnique.OpenMU.Network.Packets;
 
 namespace Client.Main.Networking.PacketHandling.Handlers
 {
@@ -244,6 +245,170 @@ namespace Client.Main.Networking.PacketHandling.Handlers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error parsing ItemRemoved packet.");
+            }
+            return Task.CompletedTask;
+        }
+
+        [PacketHandler(0x24, PacketRouter.NoSubCode)]  // ItemMoved / ItemMoveRequestFailed
+        public Task HandleItemMovedOrFailedAsync(Memory<byte> packet)
+        {
+            try
+            {
+                var span = packet.Span;
+                if (span.Length < 5)
+                {
+                    _logger.LogWarning("ItemMoved/Failed packet too short: {Length}", packet.Length);
+                    return Task.CompletedTask;
+                }
+
+                bool isFailed = span[0] == 0xC3 && span.Length >= 4 && span[3] == 0xFF;
+                if (isFailed)
+                {
+                    var failed = new ItemMoveRequestFailed(packet);
+                    var itemData = failed.ItemData.ToArray();
+                    // First, try restore inventory<->inventory failed move
+                    if (_characterState.TryConsumePendingInventoryMove(out var fromSlot, out var toSlot))
+                    {
+                        // Restore the item at original location
+                        _characterState.AddOrUpdateInventoryItem(fromSlot, itemData);
+                        // Ensure the temporary target slot is clean
+                        if (fromSlot != toSlot)
+                        {
+                            _characterState.RemoveInventoryItem(toSlot);
+                        }
+                        _logger.LogWarning("Item move failed. Restored item at slot {From}", fromSlot);
+                        // Inform user
+                        MuGame.ScheduleOnMainThread(() =>
+                        {
+                            var gameScene = MuGame.Instance?.ActiveScene as Client.Main.Scenes.GameScene;
+                            gameScene?.Controls.OfType<Client.Main.Controls.UI.ChatLogWindow>()
+                                .FirstOrDefault()?.AddMessage("System", "Moving the item failed.", Client.Main.Models.MessageType.Error);
+                        });
+                    }
+                    // Then, try restore any pending storage move (vault <-> inventory)
+                    else if (_characterState.TryConsumePendingVaultMove(out var vFrom, out var vTo))
+                    {
+                        // If the move originated from vault -> inventory, vFrom represents the vault slot and vTo == 0xFF
+                        // Restore the item back into the vault at its original slot.
+                        _characterState.AddOrUpdateVaultItem(vFrom, itemData);
+                        _characterState.RaiseVaultItemsChanged();
+                        _logger.LogWarning("Storage move failed. Restored vault item at slot {From}", vFrom);
+
+                        // As a best-effort, also refresh inventory UI so any temporary visuals get reset.
+                        MuGame.ScheduleOnMainThread(() =>
+                        {
+                            _characterState.RaiseInventoryChanged();
+                            var gameScene = MuGame.Instance?.ActiveScene as Client.Main.Scenes.GameScene;
+                            gameScene?.Controls.OfType<Client.Main.Controls.UI.ChatLogWindow>()
+                                .FirstOrDefault()?.AddMessage("System", "Moving the item failed.", Client.Main.Models.MessageType.Error);
+                        });
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Item move failed, but no pending move was stashed by client.");
+                        MuGame.ScheduleOnMainThread(() =>
+                        {
+                            var gameScene = MuGame.Instance?.ActiveScene as Client.Main.Scenes.GameScene;
+                            gameScene?.Controls.OfType<Client.Main.Controls.UI.ChatLogWindow>()
+                                .FirstOrDefault()?.AddMessage("System", "Moving the item failed.", Client.Main.Models.MessageType.Error);
+                        });
+                    }
+                }
+                else
+                {
+                    var moved = new ItemMoved(packet);
+                    var targetStore = moved.TargetStorageType;
+                    byte toSlot = moved.TargetSlot;
+                    var itemData = moved.ItemData.ToArray();
+
+                    if (targetStore == ItemStorageKind.Vault)
+                    {
+                        // Clear any pending storage move information
+                        if (_characterState.TryConsumePendingVaultMove(out var from, out var to))
+                        {
+                            if (from != to)
+                            {
+                                _characterState.RemoveVaultItem(from);
+                            }
+                        }
+                        // If the move originated from Inventory -> Vault, remove the source inventory slot now.
+                        if (_characterState.TryConsumePendingInventoryMove(out var invFrom, out var _))
+                        {
+                            _characterState.RemoveInventoryItem(invFrom);
+                        }
+
+                        _characterState.AddOrUpdateVaultItem(toSlot, itemData);
+                        _characterState.RaiseVaultItemsChanged();
+                        _logger.LogInformation("Vault item moved to slot {To}.", toSlot);
+                    }
+                    else // Inventory or others -> inventory fallback
+                    {
+                        // If we had a pending vault->inventory move, remove from vault
+                        if (_characterState.TryConsumePendingVaultMove(out var vf, out var vt))
+                        {
+                            _characterState.RemoveVaultItem(vf);
+                            _characterState.RaiseVaultItemsChanged();
+                        }
+                        if (_characterState.TryConsumePendingInventoryMove(out var fromSlot, out var pendingTo))
+                        {
+                            if (fromSlot != toSlot)
+                            {
+                                _characterState.RemoveInventoryItem(fromSlot);
+                            }
+                            _characterState.AddOrUpdateInventoryItem(toSlot, itemData);
+                            _logger.LogInformation("Item moved: {From} -> {To}", fromSlot, toSlot);
+                        }
+                        else
+                        {
+                            // No pending move stashed; best effort update
+                            _characterState.AddOrUpdateInventoryItem(toSlot, itemData);
+                            _logger.LogInformation("Item moved to slot {To}, no pending move available.", toSlot);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error parsing ItemMoved/Failed (0x24) packet.");
+            }
+            return Task.CompletedTask;
+        }
+
+        [PacketHandler(0x23, PacketRouter.NoSubCode)]  // DropItemRequest result (ack)
+        public Task HandleDropItemAckAsync(Memory<byte> packet)
+        {
+            try
+            {
+                var span = packet.Span;
+                if (span.Length < 5 || span[0] != 0xC1 || span[2] != 0x23)
+                {
+                    _logger.LogWarning("Unexpected DropItem ack format. Data: {Data}", Convert.ToHexString(span));
+                    return Task.CompletedTask;
+                }
+
+                bool success = span[3] != 0;
+                byte slot = span[4];
+                if (success)
+                {
+                    _characterState.RemoveInventoryItem(slot);
+                    _logger.LogInformation("DropItem ACK: Removed slot {Slot} from inventory.", slot);
+                }
+                else
+                {
+                    _logger.LogWarning("DropItem ACK: Server reported failure for slot {Slot}", slot);
+                    // Force refresh to re-show the item and inform user
+                    MuGame.ScheduleOnMainThread(() =>
+                    {
+                        _characterState.RaiseInventoryChanged();
+                        var gameScene = MuGame.Instance?.ActiveScene as Client.Main.Scenes.GameScene;
+                        gameScene?.Controls.OfType<Client.Main.Controls.UI.ChatLogWindow>()
+                            .FirstOrDefault()?.AddMessage("System", "Dropping the item failed.", Client.Main.Models.MessageType.Error);
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error parsing DropItem ack (0x23).");
             }
             return Task.CompletedTask;
         }

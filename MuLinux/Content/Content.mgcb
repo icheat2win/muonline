@@ -19,6 +19,12 @@
 /processorParam:DebugMode=Auto
 /build:AlphaRGB.fx
 
+#begin GammaCorrection.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:GammaCorrection.fx
+
 #begin Arial.spritefont
 /importer:FontDescriptionImporter
 /processor:FontDescriptionProcessor
@@ -37,7 +43,7 @@
 /processorParam:DebugMode=Auto
 /build:Shadow.fx
 
-#begin Background.png
+#begin Background.jpg
 /importer:TextureImporter
 /processor:TextureProcessor
 /build:Background.jpg
@@ -51,3 +57,21 @@
 /importer:TextureImporter
 /processor:TextureProcessor
 /build:WaterSplashParticle.webp
+
+#begin ItemMaterial.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:ItemMaterial.fx
+
+#begin MonsterMaterial.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:MonsterMaterial.fx
+
+#begin DynamicLighting.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:DynamicLighting.fx

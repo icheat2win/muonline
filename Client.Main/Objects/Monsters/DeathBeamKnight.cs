@@ -7,10 +7,14 @@ using System.Threading.Tasks;
 
 namespace Client.Main.Objects.Monsters
 {
-    public class BeamKnight : MonsterObject
+    [NpcInfo(63, "Death Beam Knight")]
+    public class DeathBeamKnight : MonsterObject
     {
-        public BeamKnight()
+        public DeathBeamKnight()
         {
+            Scale = 1.9f;
+            BlendMesh = -2; // Makes the entire monster semi-transparent like in original
+            BlendMeshLight = 1.0f;
         }
 
         public override async Task Load()
