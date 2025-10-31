@@ -11,7 +11,10 @@
       "Bash(dotnet restore:*)",
       "Bash(dotnet msbuild:*)",
       "Bash(logfile=build.log)",
-      "Bash(dotnet list:*)"
+      "Bash(dotnet list:*)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet workload:*)",
+      "Read(//Users/asgerhulgaard/Downloads/MU_Red_1_20_61_Full/Data/**)"
     ],
     "deny": []
   }

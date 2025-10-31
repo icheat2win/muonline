@@ -1,5 +1,6 @@
-using Microsoft.Xna.Framework;
 using System;
+using System.IO;
+using Microsoft.Xna.Framework;
 
 namespace Client.Main
 {
@@ -14,7 +15,7 @@ namespace Client.Main
 
 #if DEBUG
                 public static Type ENTRY_SCENE = typeof(Scenes.LoadScene);
-                public static bool BACKGROUND_MUSIC = false;
+                public static bool BACKGROUND_MUSIC = true;
                 public static bool SOUND_EFFECTS = true;
                 public static float BACKGROUND_MUSIC_VOLUME = 50f;
                 public static float SOUND_EFFECTS_VOLUME = 100f;
@@ -60,7 +61,7 @@ namespace Client.Main
                 /// Enables continuous item material shader animation (e.g., glow) in UI previews when running in debug builds.
                 /// </summary>
                 public static bool ENABLE_ITEM_MATERIAL_ANIMATION = true;
-                public static string DataPath = @"C:\Games\MU_Red_1_20_61_Full\Data";
+                public static string DataPath = ResolveDebugDataPath();
                 //public static string DataPath = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "Data");
 #else
                 public static Type ENTRY_SCENE = typeof(Scenes.LoadScene);
@@ -110,7 +111,7 @@ namespace Client.Main
                 /// Enables continuous item material shader animation (e.g., glow) in UI previews when running in release builds.
                 /// </summary>
                 public static bool ENABLE_ITEM_MATERIAL_ANIMATION = true;
-                public static string DataPath = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "Data");
+                public static string DataPath = ResolveDebugDataPath();
 #endif
                 public static string DataPathUrl = "http://192.168.55.220/Data.zip";
                 public static string DefaultDataPathUrl = "https://full-wkr.mu.webzen.co.kr/muweb/full/MU_Red_1_20_61_Full.zip";
@@ -183,5 +184,21 @@ namespace Client.Main
                 /// to reduce edge artifacts on wide screens.
                 /// </summary>
                 public const float ANDROID_FOV_SCALE = 0.8f;
+                private static string ResolveDebugDataPath()
+                {
+                        var envPath = Environment.GetEnvironmentVariable("MU_DATA_PATH");
+                        if (!string.IsNullOrWhiteSpace(envPath))
+                        {
+                                return envPath;
+                        }
+
+                        if (OperatingSystem.IsWindows())
+                        {
+                                return @"C:\Games\MU_Red_1_20_61_Full\Data";
+                        }
+
+                        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                        return Path.Combine(home, "Downloads", "MU_Red_1_20_61_Full", "Data");
+                }
         }
 }
